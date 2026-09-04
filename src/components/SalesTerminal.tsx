@@ -27,7 +27,7 @@ import { searchProducts } from "@/actions/products";
 import { registerSale } from "@/actions/sales";
 import type { CartItem, Empleado, MetodoPago, Producto } from "@/lib/types";
 
-const CODIGOS_RAPIDOS = [2, 3, 5, 18, 0];
+const CODIGOS_RAPIDOS = [2, 3, 5, 8, 10];
 const DEBOUNCE_MS = 300;
 
 function formatCOP(valor: number) {
