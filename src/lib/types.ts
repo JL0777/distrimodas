@@ -28,5 +28,5 @@ export interface CartItem {
   precioUnitario: number;
   cantidad: number;
   tieneCodigo: boolean;
-  valorCodigo: number; // en COP, ej. codigo 5 => 5000
+  valorCodigo: number; // en COP por unidad, ej. codigo 5 => 5000
 }

@@ -17,7 +17,7 @@ export async function getTodaySalesSummary(): Promise<{
 
   const [totales] = await pool.query(
     `SELECT
-       COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo ELSE 0 END), 0) AS total_tiemple,
+       COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_tiemple,
        COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_netas
      FROM detalle_ventas dv
      INNER JOIN ventas v ON v.id = dv.venta_id
@@ -85,7 +85,7 @@ export async function closeDayPayroll(
 
     const [totales] = await conn.query(
       `SELECT
-         COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo ELSE 0 END), 0) AS total_tiemple,
+         COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_tiemple,
          COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_netas
        FROM detalle_ventas dv
        INNER JOIN ventas v ON v.id = dv.venta_id

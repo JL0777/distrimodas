@@ -28,6 +28,7 @@ import { registerSale } from "@/actions/sales";
 import type { CartItem, Empleado, MetodoPago, Producto } from "@/lib/types";
 
 const CODIGOS_RAPIDOS = [2, 3, 5, 8, 10];
+const NOTAS_TRANSFERENCIA_RAPIDAS = ["SONO QR", "NEQUI ALEXANDRA"];
 const DEBOUNCE_MS = 300;
 
 function formatCOP(valor: number) {
@@ -182,6 +183,23 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
     );
   }
 
+  function actualizarPrecio(clientId: string, precioUnitario: number) {
+    setCarrito((prev) =>
+      prev.map((item) => (item.clientId === clientId ? { ...item, precioUnitario } : item))
+    );
+  }
+
+  function actualizarCodigo(clientId: string, codigoEnMiles: number) {
+    const valorCodigo = codigoEnMiles * 1000;
+    setCarrito((prev) =>
+      prev.map((item) =>
+        item.clientId === clientId
+          ? { ...item, valorCodigo, tieneCodigo: valorCodigo > 0 }
+          : item
+      )
+    );
+  }
+
   const totalCarrito = useMemo(
     () => carrito.reduce((acc, item) => acc + item.precioUnitario * item.cantidad, 0),
     [carrito]
@@ -194,6 +212,14 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
   const [enviando, setEnviando] = useState(false);
   const [mensaje, setMensaje] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
 
+  function agregarNotaRapida(nota: string) {
+    setNotasTransferencia((actual) => {
+      const notaActual = actual.trim();
+      if (notaActual.includes(nota)) return actual;
+      return notaActual ? `${notaActual} · ${nota}` : nota;
+    });
+  }
+
   async function confirmarVenta() {
     setMensaje(null);
     if (!empleadoId) {
@@ -202,6 +228,14 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
     }
     if (carrito.length === 0) {
       setMensaje({ tipo: "error", texto: "Agrega al menos un producto al carrito" });
+      return;
+    }
+    if (carrito.some((item) => !Number.isFinite(item.precioUnitario) || item.precioUnitario <= 0)) {
+      setMensaje({ tipo: "error", texto: "El precio unitario debe ser mayor a 0" });
+      return;
+    }
+    if (carrito.some((item) => !Number.isFinite(item.valorCodigo) || item.valorCodigo < 0)) {
+      setMensaje({ tipo: "error", texto: "El codigo debe ser igual o mayor a 0" });
       return;
     }
     if (metodoPago === "transferencia" && !notasTransferencia.trim()) {
@@ -399,28 +433,66 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
           ) : (
             <ul className="space-y-2">
               {carrito.map((item) => (
-                <li key={item.clientId} className="flex items-center gap-2 rounded-md border p-2">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{item.nombre}</p>
+                <li
+                  key={item.clientId}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 rounded-md border p-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{item.nombre}</p>
                     <p className="text-xs text-muted-foreground">
-                      {formatCOP(item.precioUnitario)}{" "}
-                      {item.tieneCodigo && item.valorCodigo > 0 ? (
-                        <span>· Codigo {formatCOP(item.valorCodigo)}</span>
-                      ) : (
-                        <span>· Venta neta</span>
+                      Total del articulo: {formatCOP(item.precioUnitario * item.cantidad)}
+                      {item.valorCodigo > 0 && (
+                        <> · Codigo total: {formatCOP(item.valorCodigo * item.cantidad)}</>
                       )}
                     </p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label htmlFor={`precio-${item.clientId}`} className="text-xs">
+                          Precio unitario
+                        </Label>
+                        <Input
+                          id={`precio-${item.clientId}`}
+                          type="number"
+                          min={0}
+                          step="any"
+                          value={item.precioUnitario}
+                          onChange={(e) => actualizarPrecio(item.clientId, Number(e.target.value))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor={`codigo-${item.clientId}`} className="text-xs">
+                          Codigo por unidad (miles COP)
+                        </Label>
+                        <Input
+                          id={`codigo-${item.clientId}`}
+                          type="number"
+                          min={0}
+                          step="any"
+                          value={item.valorCodigo / 1000}
+                          onChange={(e) => actualizarCodigo(item.clientId, Number(e.target.value))}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={item.cantidad}
-                    onChange={(e) => actualizarCantidad(item.clientId, Number(e.target.value))}
-                    className="w-16"
-                  />
-                  <Button type="button" size="icon" variant="ghost" onClick={() => quitarDelCarrito(item.clientId)}>
-                    <Trash2 className="size-4" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Input
+                      type="number"
+                      min={1}
+                      aria-label={`Cantidad de ${item.nombre}`}
+                      value={item.cantidad}
+                      onChange={(e) => actualizarCantidad(item.clientId, Number(e.target.value))}
+                      className="w-16"
+                    />
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      aria-label={`Quitar ${item.nombre} del carrito`}
+                      onClick={() => quitarDelCarrito(item.clientId)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -468,6 +540,20 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
 
           {metodoPago === "transferencia" && (
             <div className="space-y-1.5">
+              <Label>Opciones rápidas</Label>
+              <div className="flex flex-wrap gap-2">
+                {NOTAS_TRANSFERENCIA_RAPIDAS.map((nota) => (
+                  <Button
+                    key={nota}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => agregarNotaRapida(nota)}
+                  >
+                    {nota}
+                  </Button>
+                ))}
+              </div>
               <Label htmlFor="notas-transferencia">Notas de transferencia *</Label>
               <Textarea
                 id="notas-transferencia"

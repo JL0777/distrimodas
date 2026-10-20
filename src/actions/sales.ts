@@ -144,7 +144,7 @@ export async function getTodaySalesList(): Promise<VentaFeedItem[]> {
   const pool = getPool();
   const [rows] = await pool.query(
     `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
-            COALESCE(SUM(dv.valor_codigo), 0) AS total_codigo,
+            COALESCE(SUM(dv.valor_codigo * dv.cantidad), 0) AS total_codigo,
             GROUP_CONCAT(
               CONCAT(p.nombre, IF(dv.cantidad > 1, CONCAT(' x', dv.cantidad), ''))
               ORDER BY dv.id SEPARATOR ', '
@@ -350,7 +350,7 @@ export async function listAllSales(filtros: FiltrosVentas = {}): Promise<ListaVe
 
   const [rows] = await pool.query(
     `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
-            COALESCE(SUM(dv.valor_codigo), 0) AS total_codigo,
+            COALESCE(SUM(dv.valor_codigo * dv.cantidad), 0) AS total_codigo,
             GROUP_CONCAT(
               CONCAT(p.nombre, IF(dv.cantidad > 1, CONCAT(' x', dv.cantidad), ''))
               ORDER BY dv.id SEPARATOR ', '

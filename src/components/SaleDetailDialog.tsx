@@ -103,7 +103,7 @@ export function SaleDetailDialog({ ventaId, onOpenChange }: SaleDetailDialogProp
                   <TableHead>Producto</TableHead>
                   <TableHead>Cant.</TableHead>
                   <TableHead>Precio</TableHead>
-                  <TableHead>Codigo</TableHead>
+                  <TableHead>Codigo total</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -114,7 +114,7 @@ export function SaleDetailDialog({ ventaId, onOpenChange }: SaleDetailDialogProp
                     <TableCell>{formatCOP(item.precioUnitario)}</TableCell>
                     <TableCell>
                       {item.valorCodigo > 0 ? (
-                        <Badge variant="outline">{formatCOP(item.valorCodigo)}</Badge>
+                        <Badge variant="outline">{formatCOP(item.valorCodigo * item.cantidad)}</Badge>
                       ) : (
                         <span className="text-xs text-muted-foreground">Venta neta</span>
                       )}
