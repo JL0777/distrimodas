@@ -15,6 +15,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Distrimodas la Sexta",
   description: "Sistema de ventas y gestión de Distrimodas La Sexta",
+  icons: {
+    icon: "/logo-distrimodas.png",
+    shortcut: "/logo-distrimodas.png",
+    apple: "/logo-distrimodas.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
