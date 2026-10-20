@@ -131,6 +131,21 @@ export function PayrollVoucherDialog({ liquidacionId }: PayrollVoucherDialogProp
                 <p className="mt-2 text-3xl font-bold tracking-tight text-emerald-900">
                   {formatCOP(detalle.totalVentas)}
                 </p>
+                <div className="mt-4 grid gap-2 border-t border-emerald-200/70 pt-3 sm:grid-cols-2">
+                  {detalle.ventasPorSede.map((sede) => (
+                    <div
+                      key={sede.sedeId}
+                      className="flex items-center justify-between gap-3 rounded-xl bg-white/75 px-3 py-2 text-sm"
+                    >
+                      <span className="font-medium text-emerald-900/75">{sede.sede}</span>
+                      <span className="font-semibold text-emerald-950">{formatCOP(sede.total)}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between gap-3 rounded-xl bg-emerald-100/80 px-3 py-2 text-sm sm:col-span-2">
+                    <span className="font-semibold text-emerald-900">Total general</span>
+                    <span className="font-bold text-emerald-950">{formatCOP(detalle.totalVentas)}</span>
+                  </div>
+                </div>
               </div>
 
               <div className="rounded-2xl border bg-white p-4">
@@ -149,6 +164,9 @@ export function PayrollVoucherDialog({ liquidacionId }: PayrollVoucherDialogProp
                           <span className="text-xs text-muted-foreground">
                             {sede.cantidadVentas} {sede.cantidadVentas === 1 ? "venta" : "ventas"}
                           </span>
+                          <span className="mt-1 block text-xs text-primary">
+                            Códigos: {formatCOP(sede.totalCodigos)}
+                          </span>
                         </span>
                         <span className="shrink-0 font-semibold">{formatCOP(sede.total)}</span>
                       </li>
@@ -160,22 +178,68 @@ export function PayrollVoucherDialog({ liquidacionId }: PayrollVoucherDialogProp
               <div className="rounded-2xl border bg-white p-4">
                 <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
                   <CreditCard className="size-4 text-primary" />
-                  Ingresos por método
+                  Ingresos por método y sede
                 </h3>
-                <ul className="space-y-3">
-                  {detalle.ventasPorMetodo.map(({ metodoPago, total }) => {
-                    const MetodoIcon = METODOS[metodoPago].icon;
-                    return (
-                      <li key={metodoPago} className="flex items-center justify-between gap-3 text-sm">
-                        <span className="flex items-center gap-2 text-muted-foreground">
-                          <MetodoIcon className="size-4" />
-                          {METODOS[metodoPago].label}
-                        </span>
-                        <span className="font-semibold text-foreground">{formatCOP(total)}</span>
-                      </li>
-                    );
-                  })}
-                </ul>
+                <div className="-mx-1 overflow-x-auto">
+                  <table className="w-full min-w-[440px] text-left text-xs">
+                    <thead>
+                      <tr className="border-b text-muted-foreground">
+                        <th className="px-2 py-2 font-medium">Sede</th>
+                        {Object.entries(METODOS).map(([metodoPago, metodo]) => {
+                          const MetodoIcon = metodo.icon;
+                          return (
+                            <th key={metodoPago} className="px-2 py-2 font-medium">
+                              <span className="flex items-center gap-1.5">
+                                <MetodoIcon className="size-3.5" />
+                                {metodo.label}
+                              </span>
+                            </th>
+                          );
+                        })}
+                        <th className="px-2 py-2 text-right font-semibold">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detalle.ventasPorSede.map((sede) => {
+                        const metodosSede = detalle.ventasPorMetodo.filter(
+                          (metodo) => metodo.sedeId === sede.sedeId
+                        );
+                        return (
+                          <tr key={sede.sedeId} className="border-b last:border-0">
+                            <th className="px-2 py-3 font-medium">{sede.sede}</th>
+                            {(["efectivo", "tarjeta", "transferencia"] as const).map((metodoPago) => (
+                              <td key={metodoPago} className="px-2 py-3 whitespace-nowrap">
+                                {formatCOP(
+                                  metodosSede.find((metodo) => metodo.metodoPago === metodoPago)?.total ?? 0
+                                )}
+                              </td>
+                            ))}
+                            <td className="px-2 py-3 text-right font-semibold whitespace-nowrap">
+                              {formatCOP(sede.total)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t font-semibold">
+                        <th className="px-2 py-3">Total</th>
+                        {(["efectivo", "tarjeta", "transferencia"] as const).map((metodoPago) => (
+                          <td key={metodoPago} className="px-2 py-3 whitespace-nowrap">
+                            {formatCOP(
+                              detalle.ventasPorMetodo
+                                .filter((metodo) => metodo.metodoPago === metodoPago)
+                                .reduce((total, metodo) => total + metodo.total, 0)
+                            )}
+                          </td>
+                        ))}
+                        <td className="px-2 py-3 text-right whitespace-nowrap">
+                          {formatCOP(detalle.totalVentas)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
             </section>
 

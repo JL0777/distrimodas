@@ -213,8 +213,13 @@ export interface LiquidacionDetalle {
   pagoPorEmpleado: number;
   totalVentas: number;
   totalNomina: number;
-  ventasPorSede: { sede: string; cantidadVentas: number; total: number }[];
-  ventasPorMetodo: { metodoPago: "efectivo" | "tarjeta" | "transferencia"; total: number }[];
+  ventasPorSede: { sedeId: number; sede: string; cantidadVentas: number; total: number; totalCodigos: number }[];
+  ventasPorMetodo: {
+    sedeId: number;
+    sede: string;
+    metodoPago: "efectivo" | "tarjeta" | "transferencia";
+    total: number;
+  }[];
   pagosEmpleados: { empleadoId: number; empleado: string; pagoTotal: number }[];
 }
 
@@ -252,20 +257,31 @@ export async function getLiquidacionDetalle(
 
   const [sedeRows, metodoRows, pagoRows, ventaTotalRows] = await Promise.all([
     pool.query(
-      `SELECT s.nombre AS sede, COUNT(v.id) AS cantidad_ventas,
-              COALESCE(SUM(v.total), 0) AS total
+      `SELECT s.id AS sede_id, s.nombre AS sede, COALESCE(ventas.cantidad_ventas, 0) AS cantidad_ventas,
+              COALESCE(ventas.total, 0) AS total, COALESCE(codigos.total_codigos, 0) AS total_codigos
+       FROM sedes s
+       LEFT JOIN (
+         SELECT sede_id, COUNT(*) AS cantidad_ventas, SUM(total) AS total
+         FROM ventas
+         WHERE DATE(fecha) = ?
+         GROUP BY sede_id
+       ) ventas ON ventas.sede_id = s.id
+       LEFT JOIN (
+         SELECT v.sede_id, SUM(dv.valor_codigo * dv.cantidad) AS total_codigos
+         FROM ventas v
+         INNER JOIN detalle_ventas dv ON dv.venta_id = v.id
+         WHERE DATE(v.fecha) = ? AND dv.es_venta_neta = FALSE
+         GROUP BY v.sede_id
+       ) codigos ON codigos.sede_id = s.id
+       ORDER BY s.nombre`,
+      [liquidacion.fecha, liquidacion.fecha]
+    ),
+    pool.query(
+      `SELECT v.sede_id, s.nombre AS sede, v.metodo_pago, COALESCE(SUM(v.total), 0) AS total
        FROM ventas v
        INNER JOIN sedes s ON s.id = v.sede_id
        WHERE DATE(v.fecha) = ?
-       GROUP BY s.id, s.nombre
-       ORDER BY s.nombre`,
-      [liquidacion.fecha]
-    ),
-    pool.query(
-      `SELECT metodo_pago, COALESCE(SUM(total), 0) AS total
-       FROM ventas
-       WHERE DATE(fecha) = ?
-       GROUP BY metodo_pago`,
+       GROUP BY v.sede_id, s.nombre, v.metodo_pago`,
       [liquidacion.fecha]
     ),
     pool.query(
@@ -285,17 +301,23 @@ export async function getLiquidacionDetalle(
   ]);
 
   const sedes = sedeRows[0] as {
+    sede_id: number;
     sede: string;
     cantidad_ventas: number;
     total: number;
+    total_codigos: number;
   }[];
   const metodos = metodoRows[0] as {
+    sede_id: number;
+    sede: string;
     metodo_pago: "efectivo" | "tarjeta" | "transferencia";
     total: number;
   }[];
   const pagos = pagoRows[0] as { empleado_id: number; empleado: string; pago_total: number }[];
   const totalVentasRow = (ventaTotalRows[0] as { total_ventas: number }[])[0];
-  const ventasPorMetodo = new Map(metodos.map((row) => [row.metodo_pago, Number(row.total)]));
+  const ventasPorMetodo = new Map(
+    metodos.map((row) => [`${row.sede_id}:${row.metodo_pago}`, Number(row.total)])
+  );
 
   return {
     id: liquidacion.id,
@@ -307,14 +329,20 @@ export async function getLiquidacionDetalle(
     totalVentas: Number(totalVentasRow?.total_ventas ?? 0),
     totalNomina: pagos.reduce((total, pago) => total + Number(pago.pago_total), 0),
     ventasPorSede: sedes.map((row) => ({
+      sedeId: row.sede_id,
       sede: row.sede,
       cantidadVentas: Number(row.cantidad_ventas),
       total: Number(row.total),
+      totalCodigos: Number(row.total_codigos),
     })),
-    ventasPorMetodo: (["efectivo", "tarjeta", "transferencia"] as const).map((metodoPago) => ({
-      metodoPago,
-      total: ventasPorMetodo.get(metodoPago) ?? 0,
-    })),
+    ventasPorMetodo: sedes.flatMap((sede) =>
+      (["efectivo", "tarjeta", "transferencia"] as const).map((metodoPago) => ({
+        sedeId: sede.sede_id,
+        sede: sede.sede,
+        metodoPago,
+        total: ventasPorMetodo.get(`${sede.sede_id}:${metodoPago}`) ?? 0,
+      }))
+    ),
     pagosEmpleados: pagos.map((row) => ({
       empleadoId: row.empleado_id,
       empleado: row.empleado,

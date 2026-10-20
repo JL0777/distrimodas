@@ -140,7 +140,7 @@ export interface VentaFeedItem {
 }
 
 // Ultimas ventas de HOY (para la lista en vivo del terminal de vendedor y del dashboard admin).
-export async function getTodaySalesList(): Promise<VentaFeedItem[]> {
+export async function getTodaySalesList(sedeId: number | null = null): Promise<VentaFeedItem[]> {
   const pool = getPool();
   const [rows] = await pool.query(
     `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
@@ -155,9 +155,11 @@ export async function getTodaySalesList(): Promise<VentaFeedItem[]> {
      LEFT JOIN detalle_ventas dv ON dv.venta_id = v.id
      LEFT JOIN productos p ON p.id = dv.producto_id
      WHERE DATE(v.fecha) = CURDATE()
+       AND (? IS NULL OR v.sede_id = ?)
      GROUP BY v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre, s.nombre
      ORDER BY v.fecha DESC, v.id DESC
-     LIMIT 50`
+     LIMIT 50`,
+    [sedeId, sedeId]
   );
   return (
     rows as {
@@ -412,6 +414,7 @@ export interface VentaPorSede {
   sede: string;
   total: number;
   cantidad: number;
+  totalCodigos: number;
 }
 
 export interface VentaPorEmpleado {
@@ -424,25 +427,64 @@ export interface VentaPorEmpleado {
 
 export interface DashboardResumen {
   totalVendidoHoy: number;
+  totalCodigosHoy: number;
+  totalNetasHoy: number;
+  ventasPorMetodo: { metodoPago: MetodoPago; total: number }[];
   ventasPorSede: VentaPorSede[];
   ventasPorEmpleado: VentaPorEmpleado[];
 }
 
 // Resumen de HOY para el dashboard admin: total general, por sede y por empleado.
-export async function getDashboardResumen(): Promise<DashboardResumen> {
+export async function getDashboardResumen(sedeId: number | null = null): Promise<DashboardResumen> {
   const pool = getPool();
 
   const [totalRows] = await pool.query(
-    `SELECT COALESCE(SUM(total), 0) AS total FROM ventas WHERE DATE(fecha) = CURDATE()`
+    `SELECT COALESCE(SUM(total), 0) AS total
+     FROM ventas
+     WHERE DATE(fecha) = CURDATE() AND (? IS NULL OR sede_id = ?)`,
+    [sedeId, sedeId]
   );
   const totalVendidoHoy = Number((totalRows as { total: number }[])[0]?.total ?? 0);
+
+  const [detalleRows] = await pool.query(
+    `SELECT
+       COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_codigos,
+       COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_netas
+     FROM detalle_ventas dv
+     INNER JOIN ventas v ON v.id = dv.venta_id
+     WHERE DATE(v.fecha) = CURDATE() AND (? IS NULL OR v.sede_id = ?)`,
+    [sedeId, sedeId]
+  );
+  const detalleHoy = (detalleRows as { total_codigos: number; total_netas: number }[])[0];
+
+  const [metodoRows] = await pool.query(
+    `SELECT metodo_pago, COALESCE(SUM(total), 0) AS total
+     FROM ventas
+     WHERE DATE(fecha) = CURDATE() AND (? IS NULL OR sede_id = ?)
+     GROUP BY metodo_pago`,
+    [sedeId, sedeId]
+  );
+  const metodosRegistrados = new Map(
+    (metodoRows as { metodo_pago: MetodoPago; total: number }[]).map((row) => [
+      row.metodo_pago,
+      Number(row.total),
+    ])
+  );
 
   const [sedeRows] = await pool.query(
     `SELECT s.id AS sede_id, s.nombre AS sede,
             COALESCE(SUM(CASE WHEN DATE(v.fecha) = CURDATE() THEN v.total END), 0) AS total,
-            COUNT(CASE WHEN DATE(v.fecha) = CURDATE() THEN v.id END) AS cantidad
+            COUNT(CASE WHEN DATE(v.fecha) = CURDATE() THEN v.id END) AS cantidad,
+            COALESCE(codigos.total_codigos, 0) AS total_codigos
      FROM sedes s
      LEFT JOIN ventas v ON v.sede_id = s.id
+     LEFT JOIN (
+       SELECT v.sede_id, SUM(dv.valor_codigo * dv.cantidad) AS total_codigos
+       FROM ventas v
+       INNER JOIN detalle_ventas dv ON dv.venta_id = v.id
+       WHERE DATE(v.fecha) = CURDATE() AND dv.es_venta_neta = FALSE
+       GROUP BY v.sede_id
+     ) codigos ON codigos.sede_id = s.id
      GROUP BY s.id, s.nombre
      ORDER BY s.id ASC`
   );
@@ -453,19 +495,33 @@ export async function getDashboardResumen(): Promise<DashboardResumen> {
             COUNT(CASE WHEN DATE(v.fecha) = CURDATE() THEN v.id END) AS cantidad
      FROM empleados e
      INNER JOIN sedes s ON s.id = e.sede_id
-     LEFT JOIN ventas v ON v.empleado_id = e.id
-     WHERE e.activo = TRUE
+     LEFT JOIN ventas v ON v.empleado_id = e.id AND DATE(v.fecha) = CURDATE()
+     WHERE e.activo = TRUE AND (? IS NULL OR e.sede_id = ?)
      GROUP BY e.id, e.nombre, s.nombre
-     ORDER BY total DESC, e.nombre ASC`
+     ORDER BY total DESC, e.nombre ASC`,
+    [sedeId, sedeId]
   );
 
   return {
     totalVendidoHoy,
-    ventasPorSede: (sedeRows as { sede_id: number; sede: string; total: number; cantidad: number }[]).map((r) => ({
+    totalCodigosHoy: Number(detalleHoy?.total_codigos ?? 0),
+    totalNetasHoy: Number(detalleHoy?.total_netas ?? 0),
+    ventasPorMetodo: (["efectivo", "tarjeta", "transferencia"] as const).map((metodoPago) => ({
+      metodoPago,
+      total: metodosRegistrados.get(metodoPago) ?? 0,
+    })),
+    ventasPorSede: (sedeRows as {
+      sede_id: number;
+      sede: string;
+      total: number;
+      cantidad: number;
+      total_codigos: number;
+    }[]).map((r) => ({
       sedeId: r.sede_id,
       sede: r.sede,
       total: Number(r.total),
       cantidad: Number(r.cantidad),
+      totalCodigos: Number(r.total_codigos),
     })),
     ventasPorEmpleado: (
       empRows as { empleado_id: number; empleado: string; sede: string; total: number; cantidad: number }[]

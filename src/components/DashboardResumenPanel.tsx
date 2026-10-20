@@ -58,6 +58,7 @@ export function DashboardResumenPanel() {
               <TableRow>
                 <TableHead>Sede</TableHead>
                 <TableHead>Ventas</TableHead>
+                <TableHead>Códigos</TableHead>
                 <TableHead className="text-right">Total</TableHead>
               </TableRow>
             </TableHeader>
@@ -66,9 +67,17 @@ export function DashboardResumenPanel() {
                 <TableRow key={sede.sedeId}>
                   <TableCell>{sede.sede}</TableCell>
                   <TableCell>{sede.cantidad}</TableCell>
+                  <TableCell className="font-medium text-primary">{formatCOP(sede.totalCodigos)}</TableCell>
                   <TableCell className="text-right font-medium">{formatCOP(sede.total)}</TableCell>
                 </TableRow>
               ))}
+              {(resumen?.ventasPorSede ?? []).length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                    No hay datos de ventas por sede.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
