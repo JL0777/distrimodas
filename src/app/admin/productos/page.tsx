@@ -9,8 +9,8 @@ export default async function ProductosPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold">Gestion de Productos</h2>
-        <p className="text-sm text-muted-foreground">Catalogo, precios y codigos de tiemple por defecto</p>
+        <h2 className="page-heading">Gestión de productos</h2>
+        <p className="page-subtitle">Administra el catálogo, los precios y los códigos de tiemple.</p>
       </div>
       <ProductsManager productos={productos} />
     </div>

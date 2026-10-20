@@ -12,6 +12,7 @@ export async function getTodaySalesSummary(): Promise<{
   totalNetas: number;
   yaLiquidado: boolean;
   empleadosLiquidados: number[];
+  empleadosConVentas: number[];
 }> {
   const pool = getPool();
 
@@ -24,6 +25,15 @@ export async function getTodaySalesSummary(): Promise<{
      WHERE DATE(v.fecha) = CURDATE()`
   );
   const fila = (totales as { total_tiemple: number; total_netas: number }[])[0];
+
+  const [empleadosConVentasRows] = await pool.query(
+    `SELECT DISTINCT empleado_id
+     FROM ventas
+     WHERE DATE(fecha) = CURDATE()`
+  );
+  const empleadosConVentas = (
+    empleadosConVentasRows as { empleado_id: number }[]
+  ).map((row) => row.empleado_id);
 
   const [liquidacionExistente] = await pool.query(
     `SELECT id FROM liquidaciones WHERE fecha = CURDATE() LIMIT 1`
@@ -44,6 +54,7 @@ export async function getTodaySalesSummary(): Promise<{
     totalNetas: Number(fila?.total_netas ?? 0),
     yaLiquidado: !!liquidacion,
     empleadosLiquidados,
+    empleadosConVentas,
   };
 }
 
@@ -191,4 +202,123 @@ export async function listLiquidaciones(): Promise<LiquidacionRow[]> {
     pagoPorEmpleado: Number(fila.pago_por_empleado),
     empleados: empleadosPorLiquidacion.get(fila.id) ?? [],
   }));
+}
+
+export interface LiquidacionDetalle {
+  id: number;
+  fecha: string;
+  asistentesCount: number;
+  totalTiemple: number;
+  totalNetas: number;
+  pagoPorEmpleado: number;
+  totalVentas: number;
+  totalNomina: number;
+  ventasPorSede: { sede: string; cantidadVentas: number; total: number }[];
+  ventasPorMetodo: { metodoPago: "efectivo" | "tarjeta" | "transferencia"; total: number }[];
+  pagosEmpleados: { empleadoId: number; empleado: string; pagoTotal: number }[];
+}
+
+const liquidacionDetalleSchema = z.object({
+  liquidacionId: z.number().int().positive(),
+});
+
+// Obtiene el comprobante de una liquidación y los totales de venta asociados a su fecha.
+export async function getLiquidacionDetalle(
+  liquidacionId: number
+): Promise<LiquidacionDetalle | null> {
+  const parsed = liquidacionDetalleSchema.safeParse({ liquidacionId });
+  if (!parsed.success) return null;
+
+  const pool = getPool();
+  const [liquidacionRows] = await pool.query(
+    `SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, asistentes_count,
+            total_tiemple, total_netas, pago_por_empleado
+     FROM liquidaciones
+     WHERE id = ?
+     LIMIT 1`,
+    [parsed.data.liquidacionId]
+  );
+  const liquidacion = (
+    liquidacionRows as {
+      id: number;
+      fecha: string;
+      asistentes_count: number;
+      total_tiemple: number;
+      total_netas: number;
+      pago_por_empleado: number;
+    }[]
+  )[0];
+  if (!liquidacion) return null;
+
+  const [sedeRows, metodoRows, pagoRows, ventaTotalRows] = await Promise.all([
+    pool.query(
+      `SELECT s.nombre AS sede, COUNT(v.id) AS cantidad_ventas,
+              COALESCE(SUM(v.total), 0) AS total
+       FROM ventas v
+       INNER JOIN sedes s ON s.id = v.sede_id
+       WHERE DATE(v.fecha) = ?
+       GROUP BY s.id, s.nombre
+       ORDER BY s.nombre`,
+      [liquidacion.fecha]
+    ),
+    pool.query(
+      `SELECT metodo_pago, COALESCE(SUM(total), 0) AS total
+       FROM ventas
+       WHERE DATE(fecha) = ?
+       GROUP BY metodo_pago`,
+      [liquidacion.fecha]
+    ),
+    pool.query(
+      `SELECT e.id AS empleado_id, e.nombre AS empleado, le.pago_total
+       FROM liquidacion_empleados le
+       INNER JOIN empleados e ON e.id = le.empleado_id
+       WHERE le.liquidacion_id = ?
+       ORDER BY e.nombre`,
+      [liquidacion.id]
+    ),
+    pool.query(
+      `SELECT COALESCE(SUM(total), 0) AS total_ventas
+       FROM ventas
+       WHERE DATE(fecha) = ?`,
+      [liquidacion.fecha]
+    ),
+  ]);
+
+  const sedes = sedeRows[0] as {
+    sede: string;
+    cantidad_ventas: number;
+    total: number;
+  }[];
+  const metodos = metodoRows[0] as {
+    metodo_pago: "efectivo" | "tarjeta" | "transferencia";
+    total: number;
+  }[];
+  const pagos = pagoRows[0] as { empleado_id: number; empleado: string; pago_total: number }[];
+  const totalVentasRow = (ventaTotalRows[0] as { total_ventas: number }[])[0];
+  const ventasPorMetodo = new Map(metodos.map((row) => [row.metodo_pago, Number(row.total)]));
+
+  return {
+    id: liquidacion.id,
+    fecha: liquidacion.fecha,
+    asistentesCount: liquidacion.asistentes_count,
+    totalTiemple: Number(liquidacion.total_tiemple),
+    totalNetas: Number(liquidacion.total_netas),
+    pagoPorEmpleado: Number(liquidacion.pago_por_empleado),
+    totalVentas: Number(totalVentasRow?.total_ventas ?? 0),
+    totalNomina: pagos.reduce((total, pago) => total + Number(pago.pago_total), 0),
+    ventasPorSede: sedes.map((row) => ({
+      sede: row.sede,
+      cantidadVentas: Number(row.cantidad_ventas),
+      total: Number(row.total),
+    })),
+    ventasPorMetodo: (["efectivo", "tarjeta", "transferencia"] as const).map((metodoPago) => ({
+      metodoPago,
+      total: ventasPorMetodo.get(metodoPago) ?? 0,
+    })),
+    pagosEmpleados: pagos.map((row) => ({
+      empleadoId: row.empleado_id,
+      empleado: row.empleado,
+      pagoTotal: Number(row.pago_total),
+    })),
+  };
 }

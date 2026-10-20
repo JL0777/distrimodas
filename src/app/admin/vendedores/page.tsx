@@ -10,8 +10,8 @@ export default async function VendedoresPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold">Gestion de Vendedores</h2>
-        <p className="text-sm text-muted-foreground">Agrega, activa o desactiva empleados de ambas sedes</p>
+        <h2 className="page-heading">Gestión de vendedores</h2>
+        <p className="page-subtitle">Agrega y administra los equipos de tus sedes.</p>
       </div>
       <EmployeesManager empleados={empleados} sedes={sedes} />
     </div>

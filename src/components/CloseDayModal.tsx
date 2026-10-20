@@ -41,6 +41,7 @@ export function CloseDayModal({ empleados, yaLiquidadoInicial = false }: CloseDa
     totalNetas: number;
     yaLiquidado: boolean;
     empleadosLiquidados: number[];
+    empleadosConVentas: number[];
   } | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [mensaje, setMensaje] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
@@ -55,7 +56,9 @@ export function CloseDayModal({ empleados, yaLiquidadoInicial = false }: CloseDa
         const data = await getTodaySalesSummary();
         if (!cancelado) {
           setResumen(data);
-          setSeleccionados(new Set(data.empleadosLiquidados));
+          setSeleccionados(
+            new Set(data.yaLiquidado ? data.empleadosLiquidados : data.empleadosConVentas)
+          );
         }
       } finally {
         if (!cancelado) setCargando(false);

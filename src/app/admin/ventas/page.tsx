@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { PayrollVoucherDialog } from "@/components/PayrollVoucherDialog";
 import type { MetodoPago } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -43,8 +44,8 @@ export default async function VentasPage({ searchParams }: VentasPageProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold">Registros</h2>
-        <p className="text-sm text-muted-foreground">Historico de ventas y liquidaciones de nomina</p>
+        <h2 className="page-heading">Registros</h2>
+        <p className="page-subtitle">Historial de ventas y liquidaciones de nómina.</p>
       </div>
 
       <Card>
@@ -67,7 +68,7 @@ export default async function VentasPage({ searchParams }: VentasPageProps) {
                 id="metodoPago"
                 name="metodoPago"
                 defaultValue={filtros.metodoPago ?? ""}
-                className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
+                className="h-10 rounded-xl border border-input bg-white px-3 text-sm shadow-sm outline-none transition focus:border-primary/50 focus:ring-4 focus:ring-primary/10"
               >
                 <option value="">Todos</option>
                 <option value="efectivo">Efectivo</option>
@@ -114,7 +115,13 @@ export default async function VentasPage({ searchParams }: VentasPageProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {ventas.map((venta) => (
+              {ventas.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
+                    No hay ventas para los filtros seleccionados.
+                  </TableCell>
+                </TableRow>
+              ) : ventas.map((venta) => (
                 <TableRow key={venta.id}>
                   <TableCell>{formatFecha(venta.fecha)}</TableCell>
                   <TableCell>{venta.empleado}</TableCell>
@@ -155,6 +162,7 @@ export default async function VentasPage({ searchParams }: VentasPageProps) {
                 <TableHead>Total Netas</TableHead>
                 <TableHead>Pago x empleado</TableHead>
                 <TableHead>Empleados</TableHead>
+                <TableHead className="text-right">Detalle</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -174,8 +182,18 @@ export default async function VentasPage({ searchParams }: VentasPageProps) {
                       ))}
                     </div>
                   </TableCell>
+                  <TableCell className="text-right">
+                    <PayrollVoucherDialog liquidacionId={liq.id} />
+                  </TableCell>
                 </TableRow>
               ))}
+              {liquidaciones.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
+                    Todavía no hay liquidaciones registradas.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
