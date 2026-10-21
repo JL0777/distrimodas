@@ -22,7 +22,9 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 
 ## Panel semanal del socio
 
-En bases de datos existentes, aplica una sola vez `database/migrations/20261021_jose_partner_role.sql` antes de desplegar la nueva versión. Para crear la cuenta de acceso, ejecuta `npm run provision:jose` desde una terminal interactiva; solicitará la contraseña sin mostrarla ni guardarla en el código.
+En bases de datos existentes, aplica una sola vez `database/migrations/20261021_jose_partner_role.sql` antes de desplegar la nueva versión. Para crear la cuenta de acceso, ejecuta `npm run provision:jose` desde una terminal interactiva; solicitará la contraseña sin mostrarla ni guardarla en el código y pedirá confirmar el host de destino.
+
+Para aprovisionar en Aiven desde PowerShell, configura temporalmente `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_NAME` y `DB_SSL_CA` con los datos de Aiven y la ruta local al certificado CA descargado desde el servicio. El script solicitará de forma oculta la contraseña de MySQL de Aiven. Confirma el host mostrado antes de continuar. Estas variables solo afectan esa terminal; al cerrarla, `.env.local` sigue intacto.
 
 El usuario `jose` puede consultar las ventas de gorras/sombreros, pavas y guantes (excepto guantes de cocina) de ambas sedes, en la semana actual y en el historial semanal.
 

@@ -1,4 +1,6 @@
+import { readFileSync } from "node:fs";
 import nextEnv from "@next/env";
+import { createInterface } from "node:readline/promises";
 import bcrypt from "bcryptjs";
 import mysql from "mysql2/promise";
 
@@ -49,20 +51,54 @@ function readHidden(prompt) {
   });
 }
 
+async function confirmTarget(target) {
+  const terminal = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await terminal.question(
+      `Destino de aprovisionamiento: ${target.host}:${target.port}/${target.database}\nEscribe el host exacto para confirmar: `
+    );
+    if (answer.trim() !== target.host) {
+      throw new Error("El host no coincide; no se creó la cuenta.");
+    }
+  } finally {
+    terminal.close();
+  }
+}
+
 async function main() {
-  const password = await readHidden("Contraseña inicial para jose (mínimo 10 caracteres): ");
-  if (password.length < 10) {
+  const host = process.env.DB_HOST ?? "localhost";
+  const port = Number(process.env.DB_PORT ?? 3306);
+  const database = process.env.DB_NAME ?? "distrimodas";
+  const user = process.env.DB_USER ?? "root";
+  const localHost = ["localhost", "127.0.0.1", "::1"].includes(host.toLowerCase());
+  const caPath = process.env.DB_SSL_CA;
+
+  if (!localHost && !caPath) {
+    throw new Error("Para un servidor remoto, configura DB_SSL_CA con la ruta al certificado CA de Aiven.");
+  }
+
+  const ssl = caPath
+    ? { ca: readFileSync(caPath, "utf8"), rejectUnauthorized: true }
+    : undefined;
+  const target = { host, port, database };
+  await confirmTarget(target);
+
+  const josePassword = await readHidden("Contraseña inicial para jose (mínimo 10 caracteres): ");
+  if (josePassword.length < 10) {
     throw new Error("La contraseña debe tener al menos 10 caracteres.");
   }
 
-  const passwordHash = await bcrypt.hash(password, 12);
+  const databasePassword = localHost
+    ? (process.env.DB_PASSWORD ?? "")
+    : await readHidden("Contraseña de conexión MySQL de Aiven: ");
+  const passwordHash = await bcrypt.hash(josePassword, 12);
   const connection = await mysql.createConnection({
-    host: process.env.DB_HOST ?? "localhost",
-    port: Number(process.env.DB_PORT ?? 3306),
-    user: process.env.DB_USER ?? "root",
-    password: process.env.DB_PASSWORD ?? "",
-    database: process.env.DB_NAME ?? "distrimodas",
-    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
+    host,
+    port,
+    user,
+    password: databasePassword,
+    database,
+    ssl,
   });
 
   try {
