@@ -28,10 +28,12 @@ export function VendorWorkspace({ empleados, sedes }: VendorWorkspaceProps) {
           <span className="font-semibold text-foreground">{empleados.length}</span> vendedores disponibles
         </div>
       </div>
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <section aria-label="Registro de productos y carrito">
         <SalesTerminal empleados={empleados} onSaleRegistered={() => setRefreshSignal((s) => s + 1)} />
+      </section>
+      <section aria-label="Ventas registradas hoy">
         <SalesFeed refreshSignal={refreshSignal} sedes={sedes} />
-      </div>
+      </section>
     </div>
   );
 }

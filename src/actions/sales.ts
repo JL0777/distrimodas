@@ -142,8 +142,7 @@ export interface VentaFeedItem {
 
 // Ultimas ventas de HOY (para la lista en vivo del terminal de vendedor y del dashboard admin).
 async function loadTodaySalesList(
-  sedeId: number | null,
-  limitResults: boolean
+  sedeId: number | null
 ): Promise<VentaFeedItem[]> {
   const pool = getPool();
   const [rows] = await pool.query(
@@ -163,7 +162,7 @@ async function loadTodaySalesList(
        AND (? IS NULL OR v.sede_id = ?)
      GROUP BY v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre, s.nombre
      ORDER BY v.fecha DESC, v.id DESC
-     ${limitResults ? "LIMIT 50" : ""}`,
+     LIMIT 50`,
     [sedeId, sedeId]
   );
   return (
@@ -191,18 +190,14 @@ async function loadTodaySalesList(
   }));
 }
 
-export async function getTodaySalesList(sedeId: number | null = null): Promise<VentaFeedItem[]> {
-  return loadTodaySalesList(sedeId, true);
-}
-
 const todaySalesFilterSchema = z.number().int().positive().nullable();
 
-export async function getAllTodaySalesList(sedeId: number | null = null): Promise<VentaFeedItem[]> {
+export async function getTodaySalesList(sedeId: number | null = null): Promise<VentaFeedItem[]> {
   const parsed = todaySalesFilterSchema.safeParse(sedeId);
   if (!parsed.success) {
     throw new Error("La sede seleccionada no es válida.");
   }
-  return loadTodaySalesList(parsed.data, false);
+  return loadTodaySalesList(parsed.data);
 }
 
 export interface VentaDetalleItem {

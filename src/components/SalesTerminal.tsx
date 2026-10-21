@@ -28,7 +28,7 @@ import { registerSale } from "@/actions/sales";
 import type { CartItem, Empleado, MetodoPago, Producto } from "@/lib/types";
 
 const CODIGOS_RAPIDOS = [2, 3, 5, 8, 10];
-const NOTAS_TRANSFERENCIA_RAPIDAS = ["SONO QR", "NEQUI ALEXANDRA"];
+const NOTAS_TRANSFERENCIA_RAPIDAS = ["SONO QR", "NEQUI ALEXANDRA", "QR ALEXANDRA"];
 const DEBOUNCE_MS = 300;
 
 function formatCOP(valor: number) {
@@ -273,19 +273,19 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       {/* Columna izquierda: captura de productos */}
-      <Card>
+      <Card className="h-full">
         <CardHeader>
-          <CardTitle>Registrar Venta</CardTitle>
+          <CardTitle className="text-lg sm:text-xl">Registrar producto</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-5">
           {soportaVoz ? (
             <Button
               type="button"
               size="lg"
               variant={escuchando ? "destructive" : "default"}
-              className="w-full gap-2"
+              className="min-h-14 w-full gap-2 text-base"
               onClick={toggleMicrofono}
             >
               <Mic className={escuchando ? "animate-pulse" : ""} />
@@ -301,6 +301,7 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
             placeholder="Nombre del producto (voz o texto)"
             value={transcripcion}
             onChange={(e) => setTranscripcion(e.target.value)}
+            className="h-12 text-base"
           />
 
           {transcripcion.trim() && !creandoNuevo && (
@@ -343,8 +344,8 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
           )}
 
           {creandoNuevo && (
-            <div className="space-y-3 rounded-lg border p-4">
-              <p className="text-sm font-medium">
+            <div className="space-y-4 rounded-2xl border border-border/70 bg-muted/20 p-5">
+              <p className="text-base font-medium">
                 Producto nuevo: <span className="text-muted-foreground">{transcripcion}</span>
               </p>
 
@@ -357,6 +358,7 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                   placeholder="Ej: 45000"
                   value={nuevoPrecio}
                   onChange={(e) => setNuevoPrecio(e.target.value)}
+                  className="h-11"
                 />
               </div>
 
@@ -365,12 +367,12 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                 <RadioGroup
                   value={nuevoTieneCodigo}
                   onValueChange={(v) => setNuevoTieneCodigo((v as "si" | "no") ?? "")}
-                  className="flex gap-4"
+                  className="flex gap-6"
                 >
-                  <label className="flex items-center gap-2 text-sm">
-                    <RadioGroupItem value="si" /> Si
+                  <label className="flex items-center gap-2 text-base">
+                    <RadioGroupItem value="si" /> Sí
                   </label>
-                  <label className="flex items-center gap-2 text-sm">
+                  <label className="flex items-center gap-2 text-base">
                     <RadioGroupItem value="no" /> No
                   </label>
                 </RadioGroup>
@@ -398,6 +400,7 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                     placeholder="Valor manual (ej: 7)"
                     value={nuevoCodigoValor}
                     onChange={(e) => setNuevoCodigoValor(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="h-11"
                   />
                 </div>
               )}
@@ -405,7 +408,7 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
               <div className="flex gap-2">
                 <Button
                   type="button"
-                  className="flex-1"
+                  className="min-h-11 flex-1"
                   disabled={!nuevoPrecio || !nuevoTieneCodigo}
                   onClick={confirmarProductoNuevo}
                 >
@@ -421,33 +424,33 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
       </Card>
 
       {/* Columna derecha: carrito y checkout */}
-      <Card>
+      <Card className="h-full">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
             <ShoppingCart className="size-5" /> Carrito
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-5">
           {carrito.length === 0 ? (
             <p className="text-sm text-muted-foreground">No hay productos en el carrito</p>
           ) : (
-            <ul className="space-y-2">
+            <ul className="max-h-[28rem] space-y-3 overflow-y-auto pr-2">
               {carrito.map((item) => (
                 <li
                   key={item.clientId}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 rounded-md border p-2"
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-2xl border border-border/70 bg-white p-4 shadow-sm"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{item.nombre}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="truncate text-base font-semibold">{item.nombre}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
                       Total del articulo: {formatCOP(item.precioUnitario * item.cantidad)}
                       {item.valorCodigo > 0 && (
                         <> · Codigo total: {formatCOP(item.valorCodigo * item.cantidad)}</>
                       )}
                     </p>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div className="mt-4 grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <Label htmlFor={`precio-${item.clientId}`} className="text-xs">
+                        <Label htmlFor={`precio-${item.clientId}`} className="text-sm">
                           Precio unitario
                         </Label>
                         <Input
@@ -457,10 +460,11 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                           step="any"
                           value={item.precioUnitario}
                           onChange={(e) => actualizarPrecio(item.clientId, Number(e.target.value))}
+                          className="h-11"
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label htmlFor={`codigo-${item.clientId}`} className="text-xs">
+                        <Label htmlFor={`codigo-${item.clientId}`} className="text-sm">
                           Codigo por unidad (miles COP)
                         </Label>
                         <Input
@@ -470,6 +474,7 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                           step="any"
                           value={item.valorCodigo / 1000}
                           onChange={(e) => actualizarCodigo(item.clientId, Number(e.target.value))}
+                          className="h-11"
                         />
                       </div>
                     </div>
@@ -481,7 +486,7 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                       aria-label={`Cantidad de ${item.nombre}`}
                       value={item.cantidad}
                       onChange={(e) => actualizarCantidad(item.clientId, Number(e.target.value))}
-                      className="w-16"
+                      className="h-11 w-20"
                     />
                     <Button
                       type="button"
@@ -498,15 +503,15 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
             </ul>
           )}
 
-          <div className="flex items-center justify-between border-t pt-3 text-sm font-semibold">
+          <div className="flex items-center justify-between border-t pt-4 text-base font-semibold">
             <span>Total</span>
             <span>{formatCOP(totalCarrito)}</span>
           </div>
 
-          <div className="space-y-1.5">
-            <Label>Vendedor</Label>
+          <div className="space-y-2">
+            <Label className="text-sm">Vendedor</Label>
             <Select value={empleadoId} onValueChange={(value) => setEmpleadoId(value ?? "")}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="h-12 w-full text-base">
                 <SelectValue placeholder="Selecciona el vendedor" />
               </SelectTrigger>
               <SelectContent>
@@ -519,20 +524,20 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
             </Select>
           </div>
 
-          <div className="space-y-1.5">
-            <Label>Metodo de pago</Label>
+          <div className="space-y-3">
+            <Label className="text-sm">Método de pago</Label>
             <RadioGroup
               value={metodoPago}
               onValueChange={(v) => setMetodoPago(v as MetodoPago)}
-              className="flex gap-4"
+              className="grid grid-cols-1 gap-2 sm:grid-cols-3"
             >
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm">
                 <RadioGroupItem value="efectivo" /> Efectivo
               </label>
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm">
                 <RadioGroupItem value="tarjeta" /> Tarjeta
               </label>
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm">
                 <RadioGroupItem value="transferencia" /> Transferencia
               </label>
             </RadioGroup>
@@ -546,7 +551,7 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                   <Button
                     key={nota}
                     type="button"
-                    size="sm"
+                    size="default"
                     variant="outline"
                     onClick={() => agregarNotaRapida(nota)}
                   >
@@ -560,6 +565,7 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                 placeholder="Ej: Nequi a nombre de..., ultimos 4 digitos, referencia..."
                 value={notasTransferencia}
                 onChange={(e) => setNotasTransferencia(e.target.value)}
+                className="min-h-24 text-base"
               />
             </div>
           )}
@@ -570,7 +576,7 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
             </p>
           )}
 
-          <Button type="button" className="w-full" disabled={enviando} onClick={confirmarVenta}>
+          <Button type="button" size="lg" className="min-h-12 w-full text-base" disabled={enviando} onClick={confirmarVenta}>
             {enviando ? <Loader2 className="size-4 animate-spin" /> : "Confirmar Venta"}
           </Button>
         </CardContent>
