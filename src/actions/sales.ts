@@ -100,11 +100,12 @@ export async function registerSale(
       const esVentaNeta = !item.tieneCodigo || item.valorCodigo === 0;
       await conn.query(
         `INSERT INTO detalle_ventas
-           (venta_id, producto_id, cantidad, precio_unitario, es_venta_neta, valor_codigo)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+           (venta_id, producto_id, nombre_producto, cantidad, precio_unitario, es_venta_neta, valor_codigo)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           ventaId,
           item.productoId,
+          item.nombre,
           item.cantidad,
           item.precioUnitario,
           esVentaNeta,
@@ -149,7 +150,8 @@ async function loadTodaySalesList(
     `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
             COALESCE(SUM(dv.valor_codigo * dv.cantidad), 0) AS total_codigo,
             GROUP_CONCAT(
-              CONCAT(p.nombre, IF(dv.cantidad > 1, CONCAT(' x', dv.cantidad), ''))
+              CONCAT(COALESCE(dv.nombre_producto, p.nombre),
+                     IF(dv.cantidad > 1, CONCAT(' x', dv.cantidad), ''))
               ORDER BY dv.id SEPARATOR ', '
             ) AS articulos
      FROM ventas v
@@ -249,7 +251,8 @@ export async function getSaleDetail(ventaId: number): Promise<VentaDetalle | nul
   if (!venta) return null;
 
   const [itemRows] = await pool.query(
-    `SELECT dv.id, p.nombre AS producto_nombre, dv.cantidad, dv.precio_unitario, dv.es_venta_neta, dv.valor_codigo
+    `SELECT dv.id, COALESCE(dv.nombre_producto, p.nombre) AS producto_nombre,
+            dv.cantidad, dv.precio_unitario, dv.es_venta_neta, dv.valor_codigo
      FROM detalle_ventas dv
      INNER JOIN productos p ON p.id = dv.producto_id
      WHERE dv.venta_id = ?
@@ -371,7 +374,8 @@ export async function listAllSales(filtros: FiltrosVentas = {}): Promise<ListaVe
     `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
             COALESCE(SUM(dv.valor_codigo * dv.cantidad), 0) AS total_codigo,
             GROUP_CONCAT(
-              CONCAT(p.nombre, IF(dv.cantidad > 1, CONCAT(' x', dv.cantidad), ''))
+              CONCAT(COALESCE(dv.nombre_producto, p.nombre),
+                     IF(dv.cantidad > 1, CONCAT(' x', dv.cantidad), ''))
               ORDER BY dv.id SEPARATOR ', '
             ) AS articulos
      FROM ventas v

@@ -20,6 +20,12 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Panel semanal del socio
+
+En bases de datos existentes, aplica una sola vez `database/migrations/20261021_jose_partner_role.sql` antes de desplegar la nueva versión. Para crear la cuenta de acceso, ejecuta `npm run provision:jose` desde una terminal interactiva; solicitará la contraseña sin mostrarla ni guardarla en el código.
+
+El usuario `jose` puede consultar las ventas de gorras/sombreros, pavas y guantes (excepto guantes de cocina) de ambas sedes, en la semana actual y en el historial semanal.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

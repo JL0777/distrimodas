@@ -6,10 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "provision:jose": "node scripts/provision-jose.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
+    "@next/env": "^16.3.4",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS detalle_ventas (
   id INT AUTO_INCREMENT PRIMARY KEY,
   venta_id INT NOT NULL,
   producto_id INT NOT NULL,
+  nombre_producto VARCHAR(200) NOT NULL,
   cantidad INT NOT NULL DEFAULT 1,
   precio_unitario DECIMAL(12,2) NOT NULL,
   es_venta_neta BOOLEAN NOT NULL DEFAULT TRUE,
@@ -135,15 +136,15 @@ CREATE INDEX idx_liq_empleados_empleado ON liquidacion_empleados(empleado_id);
 
 -- ---------------------------------------------------------------------
 -- Tabla: usuarios (cuentas de acceso al sistema)
--- Nota: no es 1 a 1 con empleados. Hay un usuario "admin" y un usuario
--- "vendedor" compartido por el personal de venta (al vender, se elige el
--- empleado especifico desde el dropdown existente en el terminal).
+-- Nota: no es 1 a 1 con empleados. El usuario "vendedor" es compartido por
+-- el personal de venta (se elige al empleado en el terminal). El rol "jose"
+-- solo tiene acceso al reporte de artículos del socio.
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS usuarios (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(50) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
-  rol ENUM('admin', 'vendedor') NOT NULL,
+  rol ENUM('admin', 'vendedor', 'jose') NOT NULL,
   activo BOOLEAN NOT NULL DEFAULT TRUE,
   creado_en TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
@@ -151,6 +152,8 @@ CREATE TABLE IF NOT EXISTS usuarios (
 -- Usuarios por defecto (CAMBIAR LAS CONTRASEÑAS DESPUES DEL PRIMER INGRESO):
 --   username: admin     password: admin123
 --   username: vendedor  password: vendedor123
+--   La cuenta jose se provisiona con `npm run provision:jose` para no guardar
+--   su contraseña inicial ni su hash en este archivo.
 INSERT INTO usuarios (username, password_hash, rol) VALUES
   ('admin', '$2b$10$tmwrpA.wt/7FJ5PpdFPJsecEk8NHnh.rcL5Ii8UsIFrPoh6/2M1re', 'admin'),
   ('vendedor', '$2b$10$5mVxX4c2DgrsSnBwx6de..dtMVgf/yve93EP23dMzRkk8s9SyZjkO', 'vendedor')

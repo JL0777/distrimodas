@@ -8,7 +8,7 @@ interface UsuarioRow {
   id: number;
   username: string;
   password_hash: string;
-  rol: "admin" | "vendedor";
+  rol: "admin" | "vendedor" | "jose";
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({

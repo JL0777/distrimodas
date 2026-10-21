@@ -9,7 +9,9 @@ export const dynamic = "force-dynamic";
 export default async function LoginPage() {
   const session = await auth();
   if (session?.user) {
-    redirect(session.user.rol === "admin" ? "/admin" : "/vendedor");
+    const dashboard =
+      session.user.rol === "admin" ? "/admin" : session.user.rol === "jose" ? "/jose" : "/vendedor";
+    redirect(dashboard);
   }
 
   const logoDisponible = existsSync(join(process.cwd(), "public", "logo-distrimodas.png"));

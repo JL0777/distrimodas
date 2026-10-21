@@ -9,5 +9,5 @@ export function middleware(...args: Parameters<typeof auth>) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/vendedor/:path*"],
+  matcher: ["/admin/:path*", "/vendedor/:path*", "/jose/:path*"],
 };

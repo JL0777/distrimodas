@@ -15,15 +15,21 @@ export const authConfig = {
       const rol = auth?.user?.rol;
       const { pathname, origin } = request.nextUrl;
       const logueado = !!auth?.user;
+      const rutaSegunRol =
+        rol === "admin" ? "/admin" : rol === "jose" ? "/jose" : "/vendedor";
 
       // Sin sesion -> el redirect a /login lo maneja NextAuth (pages.signIn).
       if (pathname.startsWith("/admin")) {
         if (!logueado) return false;
-        return rol === "admin" ? true : Response.redirect(new URL("/vendedor", origin));
+        return rol === "admin" ? true : Response.redirect(new URL(rutaSegunRol, origin));
       }
       if (pathname.startsWith("/vendedor")) {
         if (!logueado) return false;
-        return rol === "vendedor" ? true : Response.redirect(new URL("/admin", origin));
+        return rol === "vendedor" ? true : Response.redirect(new URL(rutaSegunRol, origin));
+      }
+      if (pathname.startsWith("/jose")) {
+        if (!logueado) return false;
+        return rol === "jose" ? true : Response.redirect(new URL(rutaSegunRol, origin));
       }
       return true;
     },
