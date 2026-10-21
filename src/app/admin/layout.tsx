@@ -1,9 +1,11 @@
 import Link from "next/link";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { logout } from "@/actions/auth";
 import { Button } from "@/components/ui/button";
-import { BarChart3, Boxes, ClipboardList, LogOut, ShoppingBag, Users } from "lucide-react";
+import { AccessibilityControls } from "@/components/AccessibilityControls";
+import { BarChart3, Boxes, ClipboardList, LogOut, Users } from "lucide-react";
 
 const NAV_LINKS = [
   { href: "/admin", label: "Dashboard", icon: BarChart3 },
@@ -22,7 +24,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-8">
             <Link href="/admin" className="flex w-fit items-center gap-3 rounded-xl outline-none focus-visible:ring-4 focus-visible:ring-primary/15">
-                <img src="/logo-distrimodas.png" alt="Distrimodas Logo" className="size-20 object-contain" />
+                <Image src="/logo-distrimodas.png" alt="Distrimodas Logo" width={80} height={80} className="size-20 object-contain" />
               <span>
                 <span className="block text-sm font-bold tracking-tight">Distrimodas</span>
                 <span className="block text-[11px] font-medium tracking-wide text-muted-foreground">LA SEXTA · ADMIN</span>
@@ -51,6 +53,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       </header>
 
       <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">{children}</main>
+      <AccessibilityControls />
     </div>
   );
 }

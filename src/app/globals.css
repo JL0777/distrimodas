@@ -138,3 +138,24 @@
     @apply mt-1.5 text-sm leading-6 text-muted-foreground sm:text-base;
   }
 }
+
+html[data-font-scale="small"] {
+  font-size: 90%;
+}
+
+html[data-font-scale="normal"] {
+  font-size: 100%;
+}
+
+html[data-font-scale="large"] {
+  font-size: 115%;
+}
+
+html[data-bold-contrast="true"] :is(h1, h2, h3, h4, h5, h6, th, strong, b, label, .font-medium, .font-semibold, .font-bold) {
+  color: #21151d;
+  font-weight: 750;
+}
+
+html[data-bold-contrast="true"] .text-muted-foreground {
+  color: #40333b;
+}

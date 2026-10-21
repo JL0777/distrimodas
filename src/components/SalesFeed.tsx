@@ -9,6 +9,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { getTodaySalesList, deleteSale } from "@/actions/sales";
 import type { VentaFeedItem } from "@/actions/sales";
 import { SaleDetailDialog } from "@/components/SaleDetailDialog";
+import { TodaySalesDialog } from "@/components/TodaySalesDialog";
+import type { Sede } from "@/lib/types";
 
 const POLL_MS = 4000;
 
@@ -26,9 +28,10 @@ function formatHora(fecha: string) {
 
 interface SalesFeedProps {
   refreshSignal: number;
+  sedes: Sede[];
 }
 
-export function SalesFeed({ refreshSignal }: SalesFeedProps) {
+export function SalesFeed({ refreshSignal, sedes }: SalesFeedProps) {
   const [ventas, setVentas] = useState<VentaFeedItem[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [detalleId, setDetalleId] = useState<number | null>(null);
@@ -159,6 +162,7 @@ export function SalesFeed({ refreshSignal }: SalesFeedProps) {
         )}
       </CardContent>
 
+      <TodaySalesDialog sedes={sedes} refreshSignal={refreshSignal} />
       <SaleDetailDialog ventaId={detalleId} onOpenChange={(open) => !open && setDetalleId(null)} />
     </Card>
   );

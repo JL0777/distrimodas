@@ -4,13 +4,14 @@ import { useState } from "react";
 import { Sparkles } from "lucide-react";
 import { SalesTerminal } from "@/components/SalesTerminal";
 import { SalesFeed } from "@/components/SalesFeed";
-import type { Empleado } from "@/lib/types";
+import type { Empleado, Sede } from "@/lib/types";
 
 interface VendorWorkspaceProps {
   empleados: Empleado[];
+  sedes: Sede[];
 }
 
-export function VendorWorkspace({ empleados }: VendorWorkspaceProps) {
+export function VendorWorkspace({ empleados, sedes }: VendorWorkspaceProps) {
   const [refreshSignal, setRefreshSignal] = useState(0);
 
   return (
@@ -29,7 +30,7 @@ export function VendorWorkspace({ empleados }: VendorWorkspaceProps) {
       </div>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <SalesTerminal empleados={empleados} onSaleRegistered={() => setRefreshSignal((s) => s + 1)} />
-        <SalesFeed refreshSignal={refreshSignal} />
+        <SalesFeed refreshSignal={refreshSignal} sedes={sedes} />
       </div>
     </div>
   );
