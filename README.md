@@ -28,6 +28,10 @@ Para aprovisionar en Aiven desde PowerShell, configura temporalmente `DB_HOST`, 
 
 El usuario `jose` puede consultar las ventas de gorras/sombreros, pavas y guantes (excepto guantes de cocina) de ambas sedes, en la semana actual y en el historial semanal.
 
+## Cierre automático de nómina
+
+En Vercel, configura una variable de entorno `CRON_SECRET` con un valor secreto aleatorio y vuelve a desplegar. El cron liquida cada día a las 00:05 de Colombia las fechas anteriores que tengan ventas y todavía no estén liquidadas; registra como asistentes a los empleados que tuvieron ventas ese día. También recupera fechas pendientes si alguna ejecución diaria no se realizó.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

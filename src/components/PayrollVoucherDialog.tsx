@@ -12,6 +12,11 @@ import {
   Users,
 } from "lucide-react";
 import { getLiquidacionDetalle, type LiquidacionDetalle } from "@/actions/payroll";
+import {
+  BASICO_DIARIO,
+  PORCENTAJE_NETAS,
+  PORCENTAJE_TIEMPLE,
+} from "@/lib/payroll";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -109,6 +114,62 @@ export function PayrollVoucherDialog({ liquidacionId }: PayrollVoucherDialogProp
 
         {!cargando && detalle && (
           <div className="space-y-5">
+            {(() => {
+              const asistentes = detalle.asistentesCount;
+              const pagoTiemplePorEmpleado = asistentes > 0
+                ? (detalle.totalTiemple * PORCENTAJE_TIEMPLE) / asistentes
+                : 0;
+              const pagoNetasPorEmpleado = asistentes > 0
+                ? (detalle.totalNetas * PORCENTAJE_NETAS) / asistentes
+                : 0;
+
+              return (
+                <section className="rounded-2xl border border-sky-100 bg-sky-50/60 p-4">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-sky-950">
+                    <CircleDollarSign className="size-4 text-sky-700" />
+                    Cómo se calculó el pago diario
+                  </h3>
+                  <p className="mt-1 text-xs leading-5 text-sky-900/70">
+                    Los valores variables se dividen entre los {asistentes} empleados incluidos en el cierre.
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-start justify-between gap-4 text-sm">
+                      <span>
+                        <span className="block font-medium">Básico diario</span>
+                        <span className="text-xs text-muted-foreground">Valor fijo por empleado</span>
+                      </span>
+                      <span className="font-semibold">{formatCOP(BASICO_DIARIO)}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4 border-t border-sky-200/70 pt-3 text-sm">
+                      <span>
+                        <span className="block font-medium">Parte de códigos por empleado</span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatCOP(detalle.totalTiemple)} × {PORCENTAJE_TIEMPLE * 100}% ÷ {asistentes}
+                        </span>
+                      </span>
+                      <span className="font-semibold">{formatCOP(pagoTiemplePorEmpleado)}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4 border-t border-sky-200/70 pt-3 text-sm">
+                      <span>
+                        <span className="block font-medium">Parte de ventas netas por empleado</span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatCOP(detalle.totalNetas)} × {PORCENTAJE_NETAS * 100}% ÷ {asistentes}
+                        </span>
+                      </span>
+                      <span className="font-semibold">{formatCOP(pagoNetasPorEmpleado)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4 border-t border-sky-300 pt-3 text-sm font-bold text-sky-950">
+                      <span>Pago total por empleado</span>
+                      <span>{formatCOP(detalle.pagoPorEmpleado)}</span>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                    Para los cierres calculados con la regla actual, la base del 2% corresponde a ventas netas de Distrimodas La Sexta.
+                  </p>
+                </section>
+              );
+            })()}
+
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-100 bg-[linear-gradient(110deg,#fff7f8,#ffffff_65%,#f4faf7)] p-4">
               <div>
                 <p className="text-xs font-semibold tracking-[0.15em] text-primary uppercase">

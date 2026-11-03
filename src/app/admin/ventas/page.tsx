@@ -1,12 +1,11 @@
 import { listAllSales } from "@/actions/sales";
-import { listLiquidaciones } from "@/actions/payroll";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { PayrollVoucherDialog } from "@/components/PayrollVoucherDialog";
+import { Search } from "lucide-react";
 import type { MetodoPago } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +23,7 @@ function formatFecha(fecha: string) {
 }
 
 interface VentasPageProps {
-  searchParams: Promise<{ desde?: string; hasta?: string; metodoPago?: string }>;
+  searchParams: Promise<{ desde?: string; hasta?: string; metodoPago?: string; busqueda?: string }>;
 }
 
 const METODOS_PAGO: MetodoPago[] = ["efectivo", "tarjeta", "transferencia"];
@@ -36,16 +35,18 @@ export default async function VentasPage({ searchParams }: VentasPageProps) {
       ? (filtros.metodoPago as MetodoPago)
       : undefined;
 
-  const [{ ventas, totalesPorMetodo }, liquidaciones] = await Promise.all([
-    listAllSales({ desde: filtros.desde, hasta: filtros.hasta, metodoPago }),
-    listLiquidaciones(),
-  ]);
+  const { ventas, totalesPorMetodo } = await listAllSales({
+    desde: filtros.desde,
+    hasta: filtros.hasta,
+    metodoPago,
+    busqueda: filtros.busqueda,
+  });
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="page-heading">Registros</h2>
-        <p className="page-subtitle">Historial de ventas y liquidaciones de nómina.</p>
+        <p className="page-subtitle">Busca y consulta el historial de ventas.</p>
       </div>
 
       <Card>
@@ -53,7 +54,20 @@ export default async function VentasPage({ searchParams }: VentasPageProps) {
           <CardTitle>Filtros</CardTitle>
         </CardHeader>
         <CardContent>
-          <form className="flex flex-wrap items-end gap-3" method="get">
+          <form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_repeat(3,minmax(9rem,auto))_auto]" method="get">
+            <div className="space-y-1.5">
+              <Label htmlFor="busqueda">Buscar vendedor, artículo o sede</Label>
+              <div className="relative">
+                <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="busqueda"
+                  name="busqueda"
+                  defaultValue={filtros.busqueda}
+                  placeholder="Ej. Camila, camisa o Punto Íntimo"
+                  className="pl-9"
+                />
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="desde">Desde</Label>
               <Input id="desde" type="date" name="desde" defaultValue={filtros.desde} />
@@ -77,7 +91,7 @@ export default async function VentasPage({ searchParams }: VentasPageProps) {
               </select>
             </div>
             <Button type="submit" size="sm">
-              Filtrar
+              Buscar
             </Button>
           </form>
         </CardContent>
@@ -98,7 +112,7 @@ export default async function VentasPage({ searchParams }: VentasPageProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Ventas ({ventas.length})</CardTitle>
+          <CardTitle>Ventas ({ventas.length}{ventas.length === 200 ? "+" : ""})</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
@@ -148,56 +162,6 @@ export default async function VentasPage({ searchParams }: VentasPageProps) {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Liquidaciones de nomina</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Asistentes</TableHead>
-                <TableHead>Total Codigos</TableHead>
-                <TableHead>Total Netas</TableHead>
-                <TableHead>Pago x empleado</TableHead>
-                <TableHead>Empleados</TableHead>
-                <TableHead className="text-right">Detalle</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {liquidaciones.map((liq) => (
-                <TableRow key={liq.id}>
-                  <TableCell>{new Date(liq.fecha).toLocaleDateString("es-CO")}</TableCell>
-                  <TableCell>{liq.asistentesCount}</TableCell>
-                  <TableCell>{formatCOP(liq.totalTiemple)}</TableCell>
-                  <TableCell>{formatCOP(liq.totalNetas)}</TableCell>
-                  <TableCell>{formatCOP(liq.pagoPorEmpleado)}</TableCell>
-                  <TableCell className="max-w-xs">
-                    <div className="flex flex-wrap gap-1">
-                      {liq.empleados.map((nombre) => (
-                        <Badge key={nombre} variant="outline">
-                          {nombre}
-                        </Badge>
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <PayrollVoucherDialog liquidacionId={liq.id} />
-                  </TableCell>
-                </TableRow>
-              ))}
-              {liquidaciones.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
-                    Todavía no hay liquidaciones registradas.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
     </div>
   );
 }

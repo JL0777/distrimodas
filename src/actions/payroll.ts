@@ -2,8 +2,9 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { auth } from "@/auth";
 import { getPool } from "@/lib/db";
-import { calcularLiquidacion, type PayrollCalculo } from "@/lib/payroll";
+import { closePayrollForDate, type PayrollCloseResult } from "@/lib/payroll-close";
 
 // Trae las sumatorias de HOY (tiemple y ventas netas) para poder mostrar un
 // preview en vivo en el modal de cierre de dia, antes de confirmar nada.
@@ -64,11 +65,7 @@ const cerrarDiaSchema = z.object({
   empleadoIds: z.array(z.number().int().positive()).min(1, "Selecciona al menos un empleado"),
 });
 
-export interface CerrarDiaResult {
-  success: boolean;
-  error?: string;
-  calculo?: PayrollCalculo;
-}
+export type CerrarDiaResult = PayrollCloseResult;
 
 // Ejecuta la liquidacion del dia: calcula la formula exacta de nomina
 // solidaria y guarda el resultado + el detalle por empleado en una transaccion.
@@ -84,73 +81,19 @@ export async function closeDayPayroll(
   }
 
   const pool = getPool();
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
+  const [todayRows] = await pool.query(
+    `SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS fecha`
+  );
+  const fecha = (todayRows as { fecha: string }[])[0]?.fecha;
+  if (!fecha) return { success: false, error: "No se pudo determinar la fecha del cierre." };
 
-    const [existente] = await conn.query(
-      `SELECT id FROM liquidaciones WHERE fecha = CURDATE() LIMIT 1 FOR UPDATE`
-    );
-    const liquidacionExistente = (existente as { id: number }[])[0];
-    if (liquidacionExistente && !forzarRecalculo) {
-      throw new Error("El dia de hoy ya fue liquidado. Usa 'Recalcular' si necesitas actualizarla.");
-    }
-
-    const [totales] = await conn.query(
-      `SELECT
-         COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_tiemple,
-         COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_netas
-       FROM detalle_ventas dv
-       INNER JOIN ventas v ON v.id = dv.venta_id
-       INNER JOIN sedes s ON s.id = v.sede_id
-       WHERE DATE(v.fecha) = CURDATE()
-         AND (dv.es_venta_neta = FALSE OR s.nombre = 'Distrimodas La Sexta')`
-    );
-    const fila = (totales as { total_tiemple: number; total_netas: number }[])[0];
-    const totalTiemple = Number(fila?.total_tiemple ?? 0);
-    const totalNetas = Number(fila?.total_netas ?? 0);
-
-    const calculo = calcularLiquidacion(totalTiemple, totalNetas, parsed.data.empleadoIds.length);
-
-    let liquidacionId: number;
-    if (liquidacionExistente) {
-      liquidacionId = liquidacionExistente.id;
-      await conn.query(
-        `UPDATE liquidaciones
-           SET asistentes_count = ?, total_tiemple = ?, total_netas = ?, pago_por_empleado = ?
-         WHERE id = ?`,
-        [calculo.asistentesCount, calculo.totalTiemple, calculo.totalNetas, calculo.pagoTotalPorEmpleado, liquidacionId]
-      );
-      await conn.query(`DELETE FROM liquidacion_empleados WHERE liquidacion_id = ?`, [liquidacionId]);
-    } else {
-      const [liquidacionResult] = await conn.query(
-        `INSERT INTO liquidaciones
-           (fecha, asistentes_count, total_tiemple, total_netas, pago_por_empleado)
-         VALUES (CURDATE(), ?, ?, ?, ?)`,
-        [calculo.asistentesCount, calculo.totalTiemple, calculo.totalNetas, calculo.pagoTotalPorEmpleado]
-      );
-      liquidacionId = (liquidacionResult as { insertId: number }).insertId;
-    }
-
-    for (const empleadoId of parsed.data.empleadoIds) {
-      await conn.query(
-        `INSERT INTO liquidacion_empleados (liquidacion_id, empleado_id, pago_total)
-         VALUES (?, ?, ?)`,
-        [liquidacionId, empleadoId, calculo.pagoTotalPorEmpleado]
-      );
-    }
-
-    await conn.commit();
+  const result = await closePayrollForDate(fecha, parsed.data.empleadoIds, forzarRecalculo);
+  if (result.success) {
     revalidatePath("/admin");
     revalidatePath("/admin/ventas");
-    return { success: true, calculo };
-  } catch (err) {
-    await conn.rollback();
-    const message = err instanceof Error ? err.message : "Error liquidando el dia";
-    return { success: false, error: message };
-  } finally {
-    conn.release();
+    revalidatePath("/admin/nomina");
   }
+  return result;
 }
 
 export interface LiquidacionRow {
@@ -160,17 +103,34 @@ export interface LiquidacionRow {
   totalTiemple: number;
   totalNetas: number;
   pagoPorEmpleado: number;
+  totalNomina: number;
   empleados: string[];
 }
 
-// Historico de liquidaciones (para el panel admin de registros).
-export async function listLiquidaciones(): Promise<LiquidacionRow[]> {
+const PAYROLL_PAGE_SIZE = 10;
+
+async function requireAdmin() {
+  const session = await auth();
+  if (session?.user?.rol !== "admin") {
+    throw new Error("No tienes permisos para consultar la nómina.");
+  }
+}
+
+async function loadLiquidacionesPage(offset: number, limit: number): Promise<LiquidacionRow[]> {
   const pool = getPool();
   const [liquidaciones] = await pool.query(
-    `SELECT id, fecha, asistentes_count, total_tiemple, total_netas, pago_por_empleado
-     FROM liquidaciones
-     ORDER BY fecha DESC
-     LIMIT 60`
+    `SELECT l.id, DATE_FORMAT(l.fecha, '%Y-%m-%d') AS fecha, l.asistentes_count,
+            l.total_tiemple, l.total_netas, l.pago_por_empleado,
+            COALESCE(pagos.total_nomina, 0) AS total_nomina
+     FROM liquidaciones l
+     LEFT JOIN (
+       SELECT liquidacion_id, SUM(pago_total) AS total_nomina
+       FROM liquidacion_empleados
+       GROUP BY liquidacion_id
+     ) pagos ON pagos.liquidacion_id = l.id
+     ORDER BY l.fecha DESC, l.id DESC
+     LIMIT ? OFFSET ?`,
+    [limit, offset]
   );
 
   const filas = liquidaciones as {
@@ -180,6 +140,7 @@ export async function listLiquidaciones(): Promise<LiquidacionRow[]> {
     total_tiemple: number;
     total_netas: number;
     pago_por_empleado: number;
+    total_nomina: number;
   }[];
   if (filas.length === 0) return [];
 
@@ -204,8 +165,51 @@ export async function listLiquidaciones(): Promise<LiquidacionRow[]> {
     totalTiemple: Number(fila.total_tiemple),
     totalNetas: Number(fila.total_netas),
     pagoPorEmpleado: Number(fila.pago_por_empleado),
+    totalNomina: Number(fila.total_nomina),
     empleados: empleadosPorLiquidacion.get(fila.id) ?? [],
   }));
+}
+
+export interface PayrollDashboardData {
+  totalPagado: number;
+  diasLiquidados: number;
+  promedioDiario: number;
+  liquidaciones: LiquidacionRow[];
+}
+
+export async function getPayrollDashboard(): Promise<PayrollDashboardData> {
+  await requireAdmin();
+  const pool = getPool();
+  const [summaryRows] = await pool.query(
+    `SELECT COUNT(l.id) AS dias_liquidados,
+            COALESCE(SUM(pagos.total_nomina), 0) AS total_pagado
+     FROM liquidaciones l
+     LEFT JOIN (
+       SELECT liquidacion_id, SUM(pago_total) AS total_nomina
+       FROM liquidacion_empleados
+       GROUP BY liquidacion_id
+     ) pagos ON pagos.liquidacion_id = l.id`
+  );
+  const summary = (summaryRows as { dias_liquidados: number; total_pagado: number }[])[0];
+  const diasLiquidados = Number(summary?.dias_liquidados ?? 0);
+
+  return {
+    totalPagado: Number(summary?.total_pagado ?? 0),
+    diasLiquidados,
+    promedioDiario: diasLiquidados > 0
+      ? Number(summary?.total_pagado ?? 0) / diasLiquidados
+      : 0,
+    liquidaciones: await loadLiquidacionesPage(0, PAYROLL_PAGE_SIZE),
+  };
+}
+
+export async function getMoreLiquidaciones(offset: number): Promise<LiquidacionRow[]> {
+  await requireAdmin();
+  const parsedOffset = z.number().int().min(PAYROLL_PAGE_SIZE).safeParse(offset);
+  if (!parsedOffset.success) {
+    throw new Error("La página solicitada no es válida.");
+  }
+  return loadLiquidacionesPage(parsedOffset.data, PAYROLL_PAGE_SIZE);
 }
 
 export interface LiquidacionDetalle {

@@ -334,6 +334,7 @@ const filtrosVentasSchema = z.object({
   desde: z.string().optional(),
   hasta: z.string().optional(),
   metodoPago: z.enum(["efectivo", "tarjeta", "transferencia"]).optional(),
+  busqueda: z.string().trim().max(100).optional(),
 });
 
 export type FiltrosVentas = z.infer<typeof filtrosVentasSchema>;
@@ -362,6 +363,27 @@ export async function listAllSales(filtros: FiltrosVentas = {}): Promise<ListaVe
   if (parsed.metodoPago) {
     condiciones.push("v.metodo_pago = ?");
     params.push(parsed.metodoPago);
+  }
+  if (parsed.busqueda) {
+    const termino = `%${parsed.busqueda}%`;
+    condiciones.push(`(
+      EXISTS (
+        SELECT 1 FROM empleados e_busqueda
+        WHERE e_busqueda.id = v.empleado_id AND e_busqueda.nombre LIKE ?
+      )
+      OR EXISTS (
+        SELECT 1 FROM sedes s_busqueda
+        WHERE s_busqueda.id = v.sede_id AND s_busqueda.nombre LIKE ?
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM detalle_ventas dv_busqueda
+        LEFT JOIN productos p_busqueda ON p_busqueda.id = dv_busqueda.producto_id
+        WHERE dv_busqueda.venta_id = v.id
+          AND COALESCE(dv_busqueda.nombre_producto, p_busqueda.nombre) LIKE ?
+      )
+    )`);
+    params.push(termino, termino, termino);
   }
   const whereClause = condiciones.length > 0 ? `WHERE ${condiciones.join(" AND ")}` : "";
 

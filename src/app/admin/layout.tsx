@@ -5,13 +5,14 @@ import { auth } from "@/auth";
 import { logout } from "@/actions/auth";
 import { Button } from "@/components/ui/button";
 import { AccessibilityControls } from "@/components/AccessibilityControls";
-import { BarChart3, Boxes, ClipboardList, LogOut, Users } from "lucide-react";
+import { BarChart3, Boxes, ClipboardList, LogOut, Users, Wallet } from "lucide-react";
 
 const NAV_LINKS = [
   { href: "/admin", label: "Dashboard", icon: BarChart3 },
   { href: "/admin/vendedores", label: "Vendedores", icon: Users },
   { href: "/admin/productos", label: "Productos", icon: Boxes },
   { href: "/admin/ventas", label: "Registros", icon: ClipboardList },
+  { href: "/admin/nomina", label: "Nómina", icon: Wallet },
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
