@@ -22,7 +22,9 @@ export async function getTodaySalesSummary(): Promise<{
        COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_netas
      FROM detalle_ventas dv
      INNER JOIN ventas v ON v.id = dv.venta_id
-     WHERE DATE(v.fecha) = CURDATE()`
+       INNER JOIN sedes s ON s.id = v.sede_id
+       WHERE DATE(v.fecha) = CURDATE()
+         AND (dv.es_venta_neta = FALSE OR s.nombre = 'Distrimodas La Sexta')`
   );
   const fila = (totales as { total_tiemple: number; total_netas: number }[])[0];
 
@@ -100,7 +102,9 @@ export async function closeDayPayroll(
          COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_netas
        FROM detalle_ventas dv
        INNER JOIN ventas v ON v.id = dv.venta_id
-       WHERE DATE(v.fecha) = CURDATE()`
+       INNER JOIN sedes s ON s.id = v.sede_id
+       WHERE DATE(v.fecha) = CURDATE()
+         AND (dv.es_venta_neta = FALSE OR s.nombre = 'Distrimodas La Sexta')`
     );
     const fila = (totales as { total_tiemple: number; total_netas: number }[])[0];
     const totalTiemple = Number(fila?.total_tiemple ?? 0);

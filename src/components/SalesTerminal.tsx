@@ -260,7 +260,7 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
       });
 
       if (resultado.success) {
-        setMensaje({ tipo: "ok", texto: `Venta #${resultado.ventaId} registrada correctamente` });
+        setMensaje({ tipo: "ok", texto: `Venta registrada correctamente` });
         setCarrito([]);
         setNotasTransferencia("");
         onSaleRegistered?.();

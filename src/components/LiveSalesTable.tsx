@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Radio } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getTodaySalesList } from "@/actions/sales";
@@ -39,6 +40,7 @@ function getSedeLabel(nombre: string) {
 
 export function LiveSalesTable({ sedeId, sedes, onSedeChange }: LiveSalesTableProps) {
   const [ventas, setVentas] = useState<VentaFeedItem[]>([]);
+  const [resaltarNoEfectivo, setResaltarNoEfectivo] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -62,21 +64,34 @@ export function LiveSalesTable({ sedeId, sedes, onSedeChange }: LiveSalesTablePr
           <span className="flex items-center gap-2">
             <Radio className="size-5 text-primary" /> Ventas en Vivo (hoy)
           </span>
-          <select
-            aria-label="Filtrar ventas en vivo por sede"
-            value={sedeId === null ? "ambos" : String(sedeId)}
-            onChange={(event) =>
-              onSedeChange(event.target.value === "ambos" ? null : Number(event.target.value))
-            }
-            className="h-9 rounded-xl border border-input bg-white px-3 text-sm font-medium shadow-sm outline-none transition focus:border-primary/50 focus:ring-4 focus:ring-primary/10"
-          >
-            {sedes.map((sede) => (
-              <option key={sede.id} value={String(sede.id)}>
-                {getSedeLabel(sede.nombre)}
-              </option>
-            ))}
-            <option value="ambos">Ambos</option>
-          </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={resaltarNoEfectivo ? "default" : "outline"}
+              aria-pressed={resaltarNoEfectivo}
+              aria-label="Resaltar ventas con tarjeta o transferencia"
+              onClick={() => setResaltarNoEfectivo((current) => !current)}
+              className={resaltarNoEfectivo ? "bg-emerald-700 text-white hover:bg-emerald-800" : ""}
+            >
+              Transferencias
+            </Button>
+            <select
+              aria-label="Filtrar ventas en vivo por sede"
+              value={sedeId === null ? "ambos" : String(sedeId)}
+              onChange={(event) =>
+                onSedeChange(event.target.value === "ambos" ? null : Number(event.target.value))
+              }
+              className="h-9 rounded-xl border border-input bg-white px-3 text-sm font-medium shadow-sm outline-none transition focus:border-primary/50 focus:ring-4 focus:ring-primary/10"
+            >
+              {sedes.map((sede) => (
+                <option key={sede.id} value={String(sede.id)}>
+                  {getSedeLabel(sede.nombre)}
+                </option>
+              ))}
+              <option value="ambos">Ambos</option>
+            </select>
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -99,14 +114,27 @@ export function LiveSalesTable({ sedeId, sedes, onSedeChange }: LiveSalesTablePr
               </TableHeader>
               <TableBody>
                 {ventas.map((venta) => (
-                  <TableRow key={venta.id}>
+                  <TableRow
+                    key={venta.id}
+                    className={
+                      resaltarNoEfectivo && venta.metodoPago !== "efectivo"
+                        ? "bg-emerald-100/75 hover:bg-emerald-100"
+                        : ""
+                    }
+                  >
                     <TableCell>{formatFechaHora(venta.fecha)}</TableCell>
                     <TableCell>{venta.empleado}</TableCell>
                     <TableCell>{venta.sede}</TableCell>
                     <TableCell className="max-w-48 truncate" title={venta.articulos}>
                       {venta.articulos}
                     </TableCell>
-                    <TableCell className="capitalize">{venta.metodoPago}</TableCell>
+                    <TableCell
+                      className={`capitalize ${
+                        venta.metodoPago !== "efectivo" ? "font-semibold text-emerald-700" : ""
+                      }`}
+                    >
+                      {venta.metodoPago}
+                    </TableCell>
                     <TableCell className="max-w-40 truncate" title={venta.notasTransferencia ?? undefined}>
                       {venta.notasTransferencia ?? "-"}
                     </TableCell>

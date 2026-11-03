@@ -6,6 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { getTodaySalesList, deleteSale } from "@/actions/sales";
 import type { VentaFeedItem } from "@/actions/sales";
 import { SaleDetailDialog } from "@/components/SaleDetailDialog";
@@ -35,6 +43,7 @@ export function SalesFeed({ refreshSignal, sedes }: SalesFeedProps) {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [sedeId, setSedeId] = useState<number | null>(null);
   const [detalleId, setDetalleId] = useState<number | null>(null);
+  const [resaltarNoEfectivo, setResaltarNoEfectivo] = useState(false);
   const [confirmarId, setConfirmarId] = useState<number | null>(null);
   const [eliminandoId, setEliminandoId] = useState<number | null>(null);
   const [errorEliminar, setErrorEliminar] = useState<string | null>(null);
@@ -97,6 +106,17 @@ export function SalesFeed({ refreshSignal, sedes }: SalesFeedProps) {
             <Badge variant="secondary">{ventas.length}</Badge>
           </span>
           <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              size="default"
+              variant={resaltarNoEfectivo ? "default" : "outline"}
+              aria-pressed={resaltarNoEfectivo}
+              aria-label="Resaltar ventas con tarjeta o transferencia"
+              onClick={() => setResaltarNoEfectivo((current) => !current)}
+              className={resaltarNoEfectivo ? "bg-emerald-700 text-white hover:bg-emerald-800" : ""}
+            >
+              Transferencias
+            </Button>
             <label htmlFor="filtro-sede-ventas-vendedor" className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Radio className="size-4" />
               Sede
@@ -133,77 +153,119 @@ export function SalesFeed({ refreshSignal, sedes }: SalesFeedProps) {
           </div>
         ) : (
           <ScrollArea className="h-[34rem]">
-            <ul className="grid gap-3 pr-3 sm:grid-cols-2 xl:grid-cols-3">
-              {ventas.map((venta) => (
-                <li key={venta.id} className="rounded-2xl border border-border/70 bg-white p-4 text-sm shadow-sm transition-colors hover:bg-accent/20">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-base font-semibold">{venta.empleado}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {formatHora(venta.fecha)} · {venta.sede} · {venta.metodoPago}
-                      </p>
-                      <p className="mt-2 truncate text-sm text-muted-foreground" title={venta.articulos}>
+            <div className="pr-3">
+              <Table className="min-w-[1080px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Hora</TableHead>
+                    <TableHead>Vendedor</TableHead>
+                    <TableHead>Sede</TableHead>
+                    <TableHead>Artículos</TableHead>
+                    <TableHead>Método</TableHead>
+                    <TableHead>Nota</TableHead>
+                    <TableHead className="text-right">Código</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ventas.map((venta) => (
+                    <TableRow
+                      key={venta.id}
+                      className={
+                        resaltarNoEfectivo && venta.metodoPago !== "efectivo"
+                          ? "bg-emerald-100/75 hover:bg-emerald-100"
+                          : ""
+                      }
+                    >
+                      <TableCell className="whitespace-nowrap">{formatHora(venta.fecha)}</TableCell>
+                      <TableCell className="font-medium">{venta.empleado}</TableCell>
+                      <TableCell>{venta.sede}</TableCell>
+                      <TableCell className="max-w-64 truncate" title={venta.articulos}>
                         {venta.articulos}
-                      </p>
-                      {venta.totalCodigo > 0 && (
-                        <Badge variant="outline" className="mt-1">
-                          Codigo {formatCOP(venta.totalCodigo)}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <span className="font-bold">{formatCOP(venta.total)}</span>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        title="Ver detalle"
-                        onClick={() => setDetalleId(venta.id)}
+                      </TableCell>
+                      <TableCell
+                        className={`capitalize ${
+                          venta.metodoPago !== "efectivo" ? "font-semibold text-emerald-700" : ""
+                        }`}
                       >
-                        <Eye className="size-4" />
-                      </Button>
-                      {confirmarId === venta.id ? (
-                        <>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="destructive"
-                            title="Confirmar eliminar"
-                            disabled={eliminandoId === venta.id}
-                            onClick={() => confirmarEliminar(venta.id)}
-                          >
-                            {eliminandoId === venta.id ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <Check className="size-4" />
-                            )}
-                          </Button>
+                        {venta.metodoPago}
+                      </TableCell>
+                      <TableCell
+                        className="max-w-48 truncate"
+                        title={venta.notasTransferencia ?? undefined}
+                      >
+                        {venta.notasTransferencia ?? "-"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {venta.totalCodigo > 0 ? (
+                          <Badge variant="outline">{formatCOP(venta.totalCodigo)}</Badge>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatCOP(venta.total)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-1">
                           <Button
                             type="button"
                             size="icon"
                             variant="ghost"
-                            title="Cancelar"
-                            onClick={() => setConfirmarId(null)}
+                            aria-label={`Ver detalle de venta ${venta.id}`}
+                            title="Ver detalle"
+                            onClick={() => setDetalleId(venta.id)}
                           >
-                            <X className="size-4" />
+                            <Eye className="size-4" />
                           </Button>
-                        </>
-                      ) : (
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          title="Eliminar venta"
-                          onClick={() => setConfirmarId(venta.id)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                          {confirmarId === venta.id ? (
+                            <>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="destructive"
+                                aria-label={`Confirmar eliminación de venta ${venta.id}`}
+                                title="Confirmar eliminar"
+                                disabled={eliminandoId === venta.id}
+                                onClick={() => confirmarEliminar(venta.id)}
+                              >
+                                {eliminandoId === venta.id ? (
+                                  <Loader2 className="size-4 animate-spin" />
+                                ) : (
+                                  <Check className="size-4" />
+                                )}
+                              </Button>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                aria-label={`Cancelar eliminación de venta ${venta.id}`}
+                                title="Cancelar"
+                                onClick={() => setConfirmarId(null)}
+                              >
+                                <X className="size-4" />
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              aria-label={`Eliminar venta ${venta.id}`}
+                              title="Eliminar venta"
+                              onClick={() => setConfirmarId(venta.id)}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </ScrollArea>
         )}
       </CardContent>
