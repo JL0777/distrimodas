@@ -135,7 +135,7 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
     const precio = Number(nuevoPrecio);
     if (!precio || precio <= 0) return;
     const tieneCodigo = nuevoTieneCodigo === "si";
-    const valorCodigo = tieneCodigo ? Number(nuevoCodigoValor || 0) * 1000 : 0;
+    const valorCodigo = tieneCodigo ? Number(nuevoCodigoValor) * 1000 : 0;
 
     agregarAlCarrito({
       clientId: crypto.randomUUID(),
@@ -409,7 +409,11 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                 <Button
                   type="button"
                   className="min-h-11 flex-1"
-                  disabled={!nuevoPrecio || !nuevoTieneCodigo}
+                  disabled={
+                    !nuevoPrecio ||
+                    !nuevoTieneCodigo ||
+                    (nuevoTieneCodigo === "si" && (!nuevoCodigoValor || Number(nuevoCodigoValor) <= 0))
+                  }
                   onClick={confirmarProductoNuevo}
                 >
                   Agregar al carrito

@@ -13,7 +13,13 @@ const itemVentaSchema = z.object({
   cantidad: z.number().int().positive(),
   tieneCodigo: z.boolean(),
   valorCodigo: z.number().min(0),
-});
+}).refine(
+  (item) => item.tieneCodigo ? item.valorCodigo > 0 : item.valorCodigo === 0,
+  {
+    message: "Si el artículo tiene código, ingresa un valor mayor a 0; si no tiene, el código debe ser 0.",
+    path: ["valorCodigo"],
+  }
+);
 
 const registrarVentaSchema = z.object({
   empleadoId: z.number().int().positive(),
@@ -97,7 +103,7 @@ export async function registerSale(
     const ventaId = (ventaResult as { insertId: number }).insertId;
 
     for (const item of itemsResueltos) {
-      const esVentaNeta = !item.tieneCodigo || item.valorCodigo === 0;
+      const esVentaNeta = !item.tieneCodigo;
       await conn.query(
         `INSERT INTO detalle_ventas
            (venta_id, producto_id, nombre_producto, cantidad, precio_unitario, es_venta_neta, valor_codigo)
@@ -136,6 +142,7 @@ export interface VentaFeedItem {
   total: number;
   metodoPago: MetodoPago;
   totalCodigo: number;
+  totalNeta: number;
   notasTransferencia: string | null;
   articulos: string;
 }
@@ -147,7 +154,8 @@ async function loadTodaySalesList(
   const pool = getPool();
   const [rows] = await pool.query(
     `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
-            COALESCE(SUM(dv.valor_codigo * dv.cantidad), 0) AS total_codigo,
+            COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_codigo,
+            COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_neta,
             GROUP_CONCAT(
               CONCAT(COALESCE(dv.nombre_producto, p.nombre),
                      IF(dv.cantidad > 1, CONCAT(' x', dv.cantidad), ''))
@@ -175,6 +183,7 @@ async function loadTodaySalesList(
       empleado: string;
       sede: string;
       total_codigo: number;
+      total_neta: number;
       articulos: string | null;
     }[]
   ).map((row) => ({
@@ -185,6 +194,7 @@ async function loadTodaySalesList(
     total: Number(row.total),
     metodoPago: row.metodo_pago,
     totalCodigo: Number(row.total_codigo),
+    totalNeta: Number(row.total_neta),
     notasTransferencia: row.notas_transferencia,
     articulos: row.articulos ?? "-",
   }));
@@ -389,7 +399,8 @@ export async function listAllSales(filtros: FiltrosVentas = {}): Promise<ListaVe
 
   const [rows] = await pool.query(
     `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
-            COALESCE(SUM(dv.valor_codigo * dv.cantidad), 0) AS total_codigo,
+            COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_codigo,
+            COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_neta,
             GROUP_CONCAT(
               CONCAT(COALESCE(dv.nombre_producto, p.nombre),
                      IF(dv.cantidad > 1, CONCAT(' x', dv.cantidad), ''))
@@ -430,6 +441,7 @@ export async function listAllSales(filtros: FiltrosVentas = {}): Promise<ListaVe
       empleado: string;
       sede: string;
       total_codigo: number;
+      total_neta: number;
       articulos: string | null;
     }[]
   ).map((row) => ({
@@ -440,6 +452,7 @@ export async function listAllSales(filtros: FiltrosVentas = {}): Promise<ListaVe
     total: Number(row.total),
     metodoPago: row.metodo_pago,
     totalCodigo: Number(row.total_codigo),
+    totalNeta: Number(row.total_neta),
     notasTransferencia: row.notas_transferencia,
     articulos: row.articulos ?? "-",
   }));

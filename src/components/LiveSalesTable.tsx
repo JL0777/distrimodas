@@ -108,7 +108,7 @@ export function LiveSalesTable({ sedeId, sedes, onSedeChange }: LiveSalesTablePr
                   <TableHead>Articulo</TableHead>
                   <TableHead>Metodo</TableHead>
                   <TableHead>Nota</TableHead>
-                  <TableHead>Codigo</TableHead>
+                  <TableHead>Codigo / neto</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                 </TableRow>
               </TableHeader>
@@ -139,11 +139,21 @@ export function LiveSalesTable({ sedeId, sedes, onSedeChange }: LiveSalesTablePr
                       {venta.notasTransferencia ?? "-"}
                     </TableCell>
                     <TableCell>
-                      {venta.totalCodigo > 0 ? (
-                        <Badge variant="outline">{formatCOP(venta.totalCodigo)}</Badge>
-                      ) : (
-                        "-"
-                      )}
+                      <div className="space-y-1">
+                        <div>
+                          <span className="text-xs text-muted-foreground">Código </span>
+                          {venta.totalCodigo > 0 ? (
+                            <Badge variant="outline">{formatCOP(venta.totalCodigo)}</Badge>
+                          ) : (
+                            <span>-</span>
+                          )}
+                        </div>
+                        {venta.totalNeta > 0 && (
+                          <div className="text-xs font-medium text-sky-700">
+                            Neto {formatCOP(venta.totalNeta)}
+                          </div>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right font-medium">{formatCOP(venta.total)}</TableCell>
                   </TableRow>
