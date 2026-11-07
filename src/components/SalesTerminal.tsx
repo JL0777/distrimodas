@@ -51,6 +51,9 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
   // hidratacion; se activa en el effect solo si el navegador realmente lo soporta.
   const [soportaVoz, setSoportaVoz] = useState(false);
   const [transcripcion, setTranscripcion] = useState("");
+  const [errorVoz, setErrorVoz] = useState<string | null>(null);
+  const [mostrarDictadoTeclado, setMostrarDictadoTeclado] = useState(false);
+  const campoProductoRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<InstanceType<NonNullable<Window["SpeechRecognition"]>> | null>(
     null
   );
@@ -72,20 +75,44 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
       }
       setTranscripcion(texto);
     };
-    recognition.onerror = () => setEscuchando(false);
+    recognition.onerror = (event) => {
+      setEscuchando(false);
+      setMostrarDictadoTeclado(true);
+      setErrorVoz(
+        event.error === "not-allowed" || event.error === "service-not-allowed"
+          ? "El navegador no permitió usar el micrófono. Prueba el dictado del teclado."
+          : "El reconocimiento de voz no está disponible en este navegador. Prueba el dictado del teclado."
+      );
+    };
     recognition.onend = () => setEscuchando(false);
     recognitionRef.current = recognition;
   }, []);
 
+  function activarDictadoTeclado() {
+    setErrorVoz(null);
+    setTranscripcion("");
+    setMostrarDictadoTeclado(true);
+    campoProductoRef.current?.focus();
+  }
+
   function toggleMicrofono() {
-    if (!recognitionRef.current) return;
+    if (!recognitionRef.current) {
+      activarDictadoTeclado();
+      return;
+    }
     if (escuchando) {
       recognitionRef.current.stop();
       setEscuchando(false);
     } else {
       setTranscripcion("");
-      recognitionRef.current.start();
-      setEscuchando(true);
+      setErrorVoz(null);
+      try {
+        recognitionRef.current.start();
+        setEscuchando(true);
+      } catch {
+        setMostrarDictadoTeclado(true);
+        setErrorVoz("No se pudo iniciar el micrófono. Prueba el dictado del teclado.");
+      }
     }
   }
 
@@ -291,13 +318,36 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
               <Mic className={escuchando ? "animate-pulse" : ""} />
               {escuchando ? "Escuchando..." : "Registrar Venta (Microfono)"}
             </Button>
-          ) : (
+          ) : null}
+
+          {(!soportaVoz || mostrarDictadoTeclado) && (
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              className="min-h-14 w-full gap-2 text-base"
+              onClick={activarDictadoTeclado}
+            >
+              <Mic />
+              Dictar producto con el teclado
+            </Button>
+          )}
+
+          {errorVoz && (
+            <p role="status" className="text-sm text-amber-700">
+              {errorVoz}
+            </p>
+          )}
+
+          {mostrarDictadoTeclado && (
             <p className="text-sm text-muted-foreground">
-              Tu navegador no soporta reconocimiento de voz. Escribe el nombre del producto:
+              En iPad, toca el micrófono del teclado para dictar el nombre. El texto se buscará
+              automáticamente.
             </p>
           )}
 
           <Input
+            ref={campoProductoRef}
             placeholder="Nombre del producto (voz o texto)"
             value={transcripcion}
             onChange={(e) => setTranscripcion(e.target.value)}
