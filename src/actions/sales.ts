@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { auth } from "@/auth";
 import { getPool } from "@/lib/db";
 import { createProduct } from "@/actions/products";
 import type { MetodoPago } from "@/lib/types";
@@ -603,6 +604,318 @@ export interface DashboardResumen {
   ventasPorMetodo: { metodoPago: MetodoPago; total: number }[];
   ventasPorSede: VentaPorSede[];
   ventasPorEmpleado: VentaPorEmpleado[];
+}
+
+export interface AdminSalesCalendarDay {
+  fecha: string;
+  ventas: number;
+  totalVentas: number;
+  liquidacionId: number | null;
+  totalNomina: number;
+  asistentes: number;
+}
+
+export interface AdminSalesCalendar {
+  mes: string;
+  hoy: string;
+  dias: AdminSalesCalendarDay[];
+}
+
+async function requireSalesAdmin() {
+  const session = await auth();
+  if (session?.user?.rol !== "admin") {
+    throw new Error("No tienes permisos para consultar los registros.");
+  }
+}
+
+const adminCalendarMonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+
+export async function getAdminSalesCalendar(mes?: string): Promise<AdminSalesCalendar> {
+  await requireSalesAdmin();
+  if (mes !== undefined && !adminCalendarMonthSchema.safeParse(mes).success) {
+    throw new Error("El mes solicitado no es válido.");
+  }
+
+  const pool = getPool();
+  const [todayRows] = await pool.query(
+    `SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS hoy,
+            DATE_FORMAT(CURDATE(), '%Y-%m') AS mes_actual`
+  );
+  const current = (todayRows as { hoy: string; mes_actual: string }[])[0];
+  if (!current) throw new Error("No se pudo determinar la fecha actual.");
+  const selectedMonth = mes && mes <= current.mes_actual ? mes : current.mes_actual;
+
+  const [salesRows, liquidationRows] = await Promise.all([
+    pool.query(
+      `SELECT DATE_FORMAT(DATE(fecha), '%Y-%m-%d') AS fecha,
+              COUNT(*) AS ventas, COALESCE(SUM(total), 0) AS total_ventas
+       FROM ventas
+       WHERE DATE_FORMAT(fecha, '%Y-%m') = ?
+       GROUP BY DATE(fecha)`,
+      [selectedMonth]
+    ),
+    pool.query(
+      `SELECT DATE_FORMAT(l.fecha, '%Y-%m-%d') AS fecha, l.id AS liquidacion_id,
+              COALESCE(SUM(le.pago_total), 0) AS total_nomina,
+              COUNT(le.empleado_id) AS asistentes
+       FROM liquidaciones l
+       LEFT JOIN liquidacion_empleados le ON le.liquidacion_id = l.id
+       WHERE DATE_FORMAT(l.fecha, '%Y-%m') = ?
+       GROUP BY l.id, l.fecha`,
+      [selectedMonth]
+    ),
+  ]);
+
+  const days = new Map<string, AdminSalesCalendarDay>();
+  for (const row of salesRows[0] as {
+    fecha: string;
+    ventas: number;
+    total_ventas: number;
+  }[]) {
+    days.set(row.fecha, {
+      fecha: row.fecha,
+      ventas: Number(row.ventas),
+      totalVentas: Number(row.total_ventas),
+      liquidacionId: null,
+      totalNomina: 0,
+      asistentes: 0,
+    });
+  }
+  for (const row of liquidationRows[0] as {
+    fecha: string;
+    liquidacion_id: number;
+    total_nomina: number;
+    asistentes: number;
+  }[]) {
+    const day = days.get(row.fecha) ?? {
+      fecha: row.fecha,
+      ventas: 0,
+      totalVentas: 0,
+      liquidacionId: null,
+      totalNomina: 0,
+      asistentes: 0,
+    };
+    day.liquidacionId = Number(row.liquidacion_id);
+    day.totalNomina = Number(row.total_nomina);
+    day.asistentes = Number(row.asistentes);
+    days.set(row.fecha, day);
+  }
+
+  return {
+    mes: selectedMonth,
+    hoy: current.hoy,
+    dias: [...days.values()].sort((a, b) => a.fecha.localeCompare(b.fecha)),
+  };
+}
+
+export interface AdminSalesDayDetails {
+  fecha: string;
+  liquidada: boolean;
+  resumen: {
+    cantidadVentas: number;
+    totalVentas: number;
+    totalCodigos: number;
+    totalNetas: number;
+    totalNomina: number;
+    totalTiempleNomina: number;
+    totalNetasNomina: number;
+    pagoPorEmpleado: number;
+  };
+  ventas: (VentaFeedItem & { hora: string })[];
+  ventasPorSede: { sede: string; cantidad: number; total: number }[];
+  ventasPorMetodo: { metodoPago: MetodoPago; total: number }[];
+  vendedores: { empleado: string; ventas: number; total: number }[];
+  productos: { producto: string; cantidad: number; total: number }[];
+  asistentes: { empleado: string; pago: number }[];
+}
+
+const adminSalesDaySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+});
+
+export async function getAdminSalesDayDetails(fecha: string): Promise<AdminSalesDayDetails> {
+  await requireSalesAdmin();
+  const parsedDate = adminSalesDaySchema.safeParse(fecha);
+  if (!parsedDate.success) throw new Error("La fecha seleccionada no es válida.");
+
+  const pool = getPool();
+  const [salesRows, summaryRows, sedeRows, methodRows, sellerRows, productRows, payrollRows] =
+    await Promise.all([
+      pool.query(
+        `SELECT v.id, DATE_FORMAT(v.fecha, '%H:%i') AS hora,
+                DATE_FORMAT(v.fecha, '%Y-%m-%d') AS fecha, v.total, v.metodo_pago,
+                v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
+                COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_codigo,
+                COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_neta,
+                GROUP_CONCAT(
+                  CONCAT(COALESCE(dv.nombre_producto, p.nombre),
+                         IF(dv.cantidad > 1, CONCAT(' x', dv.cantidad), ''))
+                  ORDER BY dv.id SEPARATOR ', '
+                ) AS articulos
+         FROM ventas v
+         INNER JOIN empleados e ON e.id = v.empleado_id
+         INNER JOIN sedes s ON s.id = v.sede_id
+         LEFT JOIN detalle_ventas dv ON dv.venta_id = v.id
+         LEFT JOIN productos p ON p.id = dv.producto_id
+         WHERE DATE(v.fecha) = ?
+         GROUP BY v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre, s.nombre
+         ORDER BY v.fecha DESC, v.id DESC`,
+        [parsedDate.data]
+      ),
+      pool.query(
+        `SELECT
+           (SELECT COUNT(*) FROM ventas WHERE DATE(fecha) = ?) AS cantidad_ventas,
+           (SELECT COALESCE(SUM(total), 0) FROM ventas WHERE DATE(fecha) = ?) AS total_ventas,
+           (SELECT COALESCE(SUM(dv.valor_codigo * dv.cantidad), 0)
+            FROM detalle_ventas dv
+            INNER JOIN ventas v ON v.id = dv.venta_id
+            WHERE DATE(v.fecha) = ? AND dv.es_venta_neta = FALSE) AS total_codigos,
+           (SELECT COALESCE(SUM(dv.precio_unitario * dv.cantidad), 0)
+            FROM detalle_ventas dv
+            INNER JOIN ventas v ON v.id = dv.venta_id
+            WHERE DATE(v.fecha) = ? AND dv.es_venta_neta = TRUE) AS total_netas`,
+        [parsedDate.data, parsedDate.data, parsedDate.data, parsedDate.data]
+      ),
+      pool.query(
+        `SELECT s.nombre AS sede, COUNT(v.id) AS cantidad, COALESCE(SUM(v.total), 0) AS total
+         FROM sedes s
+         LEFT JOIN ventas v ON v.sede_id = s.id AND DATE(v.fecha) = ?
+         GROUP BY s.id, s.nombre
+         ORDER BY total DESC, s.nombre`,
+        [parsedDate.data]
+      ),
+      pool.query(
+        `SELECT metodo_pago, COALESCE(SUM(total), 0) AS total
+         FROM ventas
+         WHERE DATE(fecha) = ?
+         GROUP BY metodo_pago`,
+        [parsedDate.data]
+      ),
+      pool.query(
+        `SELECT e.nombre AS empleado, COUNT(v.id) AS ventas, COALESCE(SUM(v.total), 0) AS total
+         FROM empleados e
+         INNER JOIN ventas v ON v.empleado_id = e.id
+         WHERE DATE(v.fecha) = ?
+         GROUP BY e.id, e.nombre
+         ORDER BY total DESC, e.nombre
+         LIMIT 10`,
+        [parsedDate.data]
+      ),
+      pool.query(
+        `SELECT COALESCE(dv.nombre_producto, p.nombre) AS producto,
+                SUM(dv.cantidad) AS cantidad,
+                SUM(dv.precio_unitario * dv.cantidad) AS total
+         FROM detalle_ventas dv
+         INNER JOIN ventas v ON v.id = dv.venta_id
+         LEFT JOIN productos p ON p.id = dv.producto_id
+         WHERE DATE(v.fecha) = ?
+         GROUP BY COALESCE(dv.nombre_producto, p.nombre)
+         ORDER BY cantidad DESC, total DESC, producto
+         LIMIT 10`,
+        [parsedDate.data]
+      ),
+      pool.query(
+        `SELECT l.id, l.total_tiemple, l.total_netas, l.pago_por_empleado,
+                COALESCE(SUM(le.pago_total), 0) AS total_nomina
+         FROM liquidaciones l
+         LEFT JOIN liquidacion_empleados le ON le.liquidacion_id = l.id
+         WHERE l.fecha = ?
+         GROUP BY l.id, l.total_tiemple, l.total_netas, l.pago_por_empleado
+         LIMIT 1`,
+        [parsedDate.data]
+      ),
+    ]);
+
+  const payroll = (payrollRows[0] as {
+    id: number;
+    total_tiemple: number;
+    total_netas: number;
+    pago_por_empleado: number;
+    total_nomina: number;
+  }[])[0];
+
+  const attendanceRows = payroll
+    ? await pool.query(
+        `SELECT e.nombre AS empleado, le.pago_total AS pago
+         FROM liquidacion_empleados le
+         INNER JOIN empleados e ON e.id = le.empleado_id
+         WHERE le.liquidacion_id = ?
+         ORDER BY e.nombre`,
+        [payroll.id]
+      )
+    : [[]];
+
+  const summary = (summaryRows[0] as {
+    cantidad_ventas: number;
+    total_ventas: number;
+    total_codigos: number;
+    total_netas: number;
+  }[])[0];
+  const sales = (salesRows[0] as {
+    id: number;
+    hora: string;
+    fecha: string;
+    total: number;
+    metodo_pago: MetodoPago;
+    notas_transferencia: string | null;
+    empleado: string;
+    sede: string;
+    total_codigo: number;
+    total_neta: number;
+    articulos: string | null;
+  }[]).map((row) => ({
+    id: row.id,
+    fecha: row.fecha,
+    hora: row.hora,
+    empleado: row.empleado,
+    sede: row.sede,
+    total: Number(row.total),
+    metodoPago: row.metodo_pago,
+    totalCodigo: Number(row.total_codigo),
+    totalNeta: Number(row.total_neta),
+    notasTransferencia: row.notas_transferencia,
+    articulos: row.articulos ?? "-",
+  }));
+  const paymentTotals = new Map(
+    (methodRows[0] as { metodo_pago: MetodoPago; total: number }[]).map((row) => [
+      row.metodo_pago,
+      Number(row.total),
+    ])
+  );
+
+  return {
+    fecha: parsedDate.data,
+    liquidada: Boolean(payroll),
+    resumen: {
+      cantidadVentas: Number(summary?.cantidad_ventas ?? 0),
+      totalVentas: Number(summary?.total_ventas ?? 0),
+      totalCodigos: Number(summary?.total_codigos ?? 0),
+      totalNetas: Number(summary?.total_netas ?? 0),
+      totalNomina: Number(payroll?.total_nomina ?? 0),
+      totalTiempleNomina: Number(payroll?.total_tiemple ?? 0),
+      totalNetasNomina: Number(payroll?.total_netas ?? 0),
+      pagoPorEmpleado: Number(payroll?.pago_por_empleado ?? 0),
+    },
+    ventas: sales,
+    ventasPorSede: (sedeRows[0] as { sede: string; cantidad: number; total: number }[]).map(
+      (row) => ({ sede: row.sede, cantidad: Number(row.cantidad), total: Number(row.total) })
+    ),
+    ventasPorMetodo: (["efectivo", "tarjeta", "transferencia"] as const).map((metodoPago) => ({
+      metodoPago,
+      total: paymentTotals.get(metodoPago) ?? 0,
+    })),
+    vendedores: (sellerRows[0] as { empleado: string; ventas: number; total: number }[]).map(
+      (row) => ({ empleado: row.empleado, ventas: Number(row.ventas), total: Number(row.total) })
+    ),
+    productos: (productRows[0] as { producto: string; cantidad: number; total: number }[]).map(
+      (row) => ({ producto: row.producto, cantidad: Number(row.cantidad), total: Number(row.total) })
+    ),
+    asistentes: (attendanceRows[0] as { empleado: string; pago: number }[]).map((row) => ({
+      empleado: row.empleado,
+      pago: Number(row.pago),
+    })),
+  };
 }
 
 // Resumen de HOY para el dashboard admin: total general, por sede y por empleado.
