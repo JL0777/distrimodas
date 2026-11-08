@@ -647,7 +647,7 @@ export async function getAdminSalesCalendar(mes?: string): Promise<AdminSalesCal
 
   const [salesRows, liquidationRows] = await Promise.all([
     pool.query(
-      `SELECT DATE_FORMAT(DATE(fecha), '%Y-%m-%d') AS fecha,
+      `SELECT DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha,
               COUNT(*) AS ventas, COALESCE(SUM(total), 0) AS total_ventas
        FROM ventas
        WHERE DATE_FORMAT(fecha, '%Y-%m') = ?
