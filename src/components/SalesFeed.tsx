@@ -17,6 +17,7 @@ import {
 import { getTodaySalesList, deleteSale } from "@/actions/sales";
 import type { VentaFeedItem } from "@/actions/sales";
 import { SaleDetailDialog } from "@/components/SaleDetailDialog";
+import { TodaySalesDialog } from "@/components/TodaySalesDialog";
 import type { Sede } from "@/lib/types";
 
 const POLL_MS = 4000;
@@ -110,6 +111,7 @@ export function SalesFeed({ refreshSignal, sedes }: SalesFeedProps) {
             <Badge variant="secondary">{ventas.length}</Badge>
           </span>
           <div className="flex flex-wrap items-center gap-3">
+            <TodaySalesDialog sedes={sedes} />
             <Button
               type="button"
               size="default"

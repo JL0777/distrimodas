@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TodaySalesDialog } from "@/components/TodaySalesDialog";
 import { getTodaySalesList } from "@/actions/sales";
 import type { VentaFeedItem } from "@/actions/sales";
 import type { Sede } from "@/lib/types";
@@ -69,6 +70,7 @@ export function LiveSalesTable({ sedeId, sedes, onSedeChange }: LiveSalesTablePr
             <Radio className="size-5 text-primary" /> Ventas en Vivo (hoy)
           </span>
           <div className="flex flex-wrap items-center gap-2">
+            <TodaySalesDialog sedes={sedes} />
             <Button
               type="button"
               size="sm"

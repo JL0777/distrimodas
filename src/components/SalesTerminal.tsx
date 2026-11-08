@@ -195,13 +195,28 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
 
   // --- Carrito -----------------------------------------------------------------
   const [carrito, setCarrito] = useState<CartItem[]>([]);
+  const [valoresCarrito, setValoresCarrito] = useState<
+    Record<string, { precio: string; codigo: string }>
+  >({});
 
   function agregarAlCarrito(item: CartItem) {
     setCarrito((prev) => [...prev, item]);
+    setValoresCarrito((prev) => ({
+      ...prev,
+      [item.clientId]: {
+        precio: String(item.precioUnitario),
+        codigo: String(item.valorCodigo / 1000),
+      },
+    }));
   }
 
   function quitarDelCarrito(clientId: string) {
     setCarrito((prev) => prev.filter((item) => item.clientId !== clientId));
+    setValoresCarrito((prev) => {
+      const siguiente = { ...prev };
+      delete siguiente[clientId];
+      return siguiente;
+    });
   }
 
   function actualizarCantidad(clientId: string, cantidad: number) {
@@ -210,14 +225,29 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
     );
   }
 
-  function actualizarPrecio(clientId: string, precioUnitario: number) {
+  function actualizarPrecio(clientId: string, valor: string) {
+    setValoresCarrito((prev) => ({
+      ...prev,
+      [clientId]: { ...prev[clientId], precio: valor },
+    }));
+    const precioUnitario = Number(valor.replace(",", "."));
     setCarrito((prev) =>
-      prev.map((item) => (item.clientId === clientId ? { ...item, precioUnitario } : item))
+      prev.map((item) =>
+        item.clientId === clientId
+          ? { ...item, precioUnitario: Number.isFinite(precioUnitario) && precioUnitario > 0 ? precioUnitario : 0 }
+          : item
+      )
     );
   }
 
-  function actualizarCodigo(clientId: string, codigoEnMiles: number) {
-    const valorCodigo = codigoEnMiles * 1000;
+  function actualizarCodigo(clientId: string, valor: string) {
+    setValoresCarrito((prev) => ({
+      ...prev,
+      [clientId]: { ...prev[clientId], codigo: valor },
+    }));
+    const codigoEnMiles = Number(valor.replace(",", "."));
+    const valorCodigo =
+      valor.trim() === "" ? 0 : Number.isFinite(codigoEnMiles) && codigoEnMiles >= 0 ? codigoEnMiles * 1000 : 0;
     setCarrito((prev) =>
       prev.map((item) =>
         item.clientId === clientId
@@ -289,6 +319,7 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
       if (resultado.success) {
         setMensaje({ tipo: "ok", texto: `Venta registrada correctamente` });
         setCarrito([]);
+        setValoresCarrito({});
         setNotasTransferencia("");
         onSaleRegistered?.();
       } else {
@@ -509,11 +540,10 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                         </Label>
                         <Input
                           id={`precio-${item.clientId}`}
-                          type="number"
-                          min={0}
-                          step="any"
-                          value={item.precioUnitario}
-                          onChange={(e) => actualizarPrecio(item.clientId, Number(e.target.value))}
+                          type="text"
+                          inputMode="decimal"
+                          value={valoresCarrito[item.clientId]?.precio ?? String(item.precioUnitario)}
+                          onChange={(e) => actualizarPrecio(item.clientId, e.target.value)}
                           className="h-11"
                         />
                       </div>
@@ -523,11 +553,10 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                         </Label>
                         <Input
                           id={`codigo-${item.clientId}`}
-                          type="number"
-                          min={0}
-                          step="any"
-                          value={item.valorCodigo / 1000}
-                          onChange={(e) => actualizarCodigo(item.clientId, Number(e.target.value))}
+                          type="text"
+                          inputMode="decimal"
+                          value={valoresCarrito[item.clientId]?.codigo ?? String(item.valorCodigo / 1000)}
+                          onChange={(e) => actualizarCodigo(item.clientId, e.target.value)}
                           className="h-11"
                         />
                       </div>

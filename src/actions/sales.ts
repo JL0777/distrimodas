@@ -210,6 +210,126 @@ export async function getTodaySalesList(sedeId: number | null = null): Promise<V
   return loadTodaySalesList(parsed.data);
 }
 
+const TODAY_SALES_PAGE_SIZE = 100;
+const todaySalesPageSchema = z.object({
+  busqueda: z.string().trim().max(100),
+  sedeId: z.number().int().positive().nullable(),
+  metodoPago: z.enum(["efectivo", "tarjeta", "transferencia"]).nullable(),
+  offset: z.number().int().min(0),
+});
+
+export interface TodaySalesPage {
+  ventas: VentaFeedItem[];
+  totalRegistros: number;
+  totalVendido: number;
+  hayMas: boolean;
+}
+
+export async function getTodaySalesPage(input: {
+  busqueda: string;
+  sedeId: number | null;
+  metodoPago: MetodoPago | null;
+  offset: number;
+}): Promise<TodaySalesPage> {
+  const parsed = todaySalesPageSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error("Los filtros de ventas no son válidos.");
+  }
+
+  const { busqueda, sedeId, metodoPago, offset } = parsed.data;
+  const condiciones = ["DATE(v.fecha) = CURDATE()"];
+  const params: (string | number)[] = [];
+
+  if (sedeId !== null) {
+    condiciones.push("v.sede_id = ?");
+    params.push(sedeId);
+  }
+  if (metodoPago !== null) {
+    condiciones.push("v.metodo_pago = ?");
+    params.push(metodoPago);
+  }
+  if (busqueda) {
+    const termino = `%${busqueda}%`;
+    condiciones.push(`(
+      e.nombre LIKE ?
+      OR s.nombre LIKE ?
+      OR EXISTS (
+        SELECT 1
+        FROM detalle_ventas dv_busqueda
+        LEFT JOIN productos p_busqueda ON p_busqueda.id = dv_busqueda.producto_id
+        WHERE dv_busqueda.venta_id = v.id
+          AND COALESCE(dv_busqueda.nombre_producto, p_busqueda.nombre) LIKE ?
+      )
+    )`);
+    params.push(termino, termino, termino);
+  }
+  const whereClause = `WHERE ${condiciones.join(" AND ")}`;
+  const pool = getPool();
+
+  const [summaryRows] = await pool.query(
+    `SELECT COUNT(*) AS total_registros, COALESCE(SUM(v.total), 0) AS total_vendido
+     FROM ventas v
+     INNER JOIN empleados e ON e.id = v.empleado_id
+     INNER JOIN sedes s ON s.id = v.sede_id
+     ${whereClause}`,
+    params
+  );
+  const summary = (summaryRows as { total_registros: number; total_vendido: number }[])[0];
+  const totalRegistros = Number(summary?.total_registros ?? 0);
+
+  const [rows] = await pool.query(
+    `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia,
+            e.nombre AS empleado, s.nombre AS sede,
+            COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_codigo,
+            COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_neta,
+            GROUP_CONCAT(
+              CONCAT(COALESCE(dv.nombre_producto, p.nombre),
+                     IF(dv.cantidad > 1, CONCAT(' x', dv.cantidad), ''))
+              ORDER BY dv.id SEPARATOR ', '
+            ) AS articulos
+     FROM ventas v
+     INNER JOIN empleados e ON e.id = v.empleado_id
+     INNER JOIN sedes s ON s.id = v.sede_id
+     LEFT JOIN detalle_ventas dv ON dv.venta_id = v.id
+     LEFT JOIN productos p ON p.id = dv.producto_id
+     ${whereClause}
+     GROUP BY v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre, s.nombre
+     ORDER BY v.fecha DESC, v.id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, TODAY_SALES_PAGE_SIZE, offset]
+  );
+  const ventas = (rows as {
+    id: number;
+    fecha: string;
+    total: number;
+    metodo_pago: MetodoPago;
+    notas_transferencia: string | null;
+    empleado: string;
+    sede: string;
+    total_codigo: number;
+    total_neta: number;
+    articulos: string | null;
+  }[]).map((row) => ({
+    id: row.id,
+    fecha: row.fecha,
+    empleado: row.empleado,
+    sede: row.sede,
+    total: Number(row.total),
+    metodoPago: row.metodo_pago,
+    totalCodigo: Number(row.total_codigo),
+    totalNeta: Number(row.total_neta),
+    notasTransferencia: row.notas_transferencia,
+    articulos: row.articulos ?? "-",
+  }));
+
+  return {
+    ventas,
+    totalRegistros,
+    totalVendido: Number(summary?.total_vendido ?? 0),
+    hayMas: offset + ventas.length < totalRegistros,
+  };
+}
+
 export interface VentaDetalleItem {
   id: number;
   productoNombre: string;
