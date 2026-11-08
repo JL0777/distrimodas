@@ -39,6 +39,30 @@ function formatCOP(valor: number) {
   });
 }
 
+function formatThousandsInput(value: string) {
+  const cleaned = value.replace(/\./g, "").replace(/[^\d,]/g, "");
+  const [integerPart = "", ...decimalParts] = cleaned.split(",");
+  const groupedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return decimalParts.length > 0
+    ? `${groupedInteger},${decimalParts.join("")}`
+    : groupedInteger;
+}
+
+function parseThousandsInput(value: string) {
+  const parsed = Number(value.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function caretAfterDigitCount(value: string, digitCount: number) {
+  if (digitCount === 0) return 0;
+  let digitsSeen = 0;
+  for (let index = 0; index < value.length; index++) {
+    if (/\d/.test(value[index])) digitsSeen++;
+    if (digitsSeen === digitCount) return index + 1;
+  }
+  return value.length;
+}
+
 interface SalesTerminalProps {
   empleados: Empleado[];
   onSaleRegistered?: () => void;
@@ -225,12 +249,21 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
     );
   }
 
-  function actualizarPrecio(clientId: string, valor: string) {
+  function actualizarPrecio(clientId: string, valor: string, cursor: number) {
+    const formattedValue = formatThousandsInput(valor);
+    const digitsBeforeCursor = (valor.slice(0, cursor).match(/\d/g) ?? []).length;
     setValoresCarrito((prev) => ({
       ...prev,
-      [clientId]: { ...prev[clientId], precio: valor },
+      [clientId]: { ...prev[clientId], precio: formattedValue },
     }));
-    const precioUnitario = Number(valor.replace(",", "."));
+    requestAnimationFrame(() => {
+      const input = document.getElementById(`precio-${clientId}`);
+      if (input instanceof HTMLInputElement) {
+        const nextCursor = caretAfterDigitCount(formattedValue, digitsBeforeCursor);
+        input.setSelectionRange(nextCursor, nextCursor);
+      }
+    });
+    const precioUnitario = parseThousandsInput(formattedValue);
     setCarrito((prev) =>
       prev.map((item) =>
         item.clientId === clientId
@@ -240,14 +273,23 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
     );
   }
 
-  function actualizarCodigo(clientId: string, valor: string) {
+  function actualizarCodigo(clientId: string, valor: string, cursor: number) {
+    const formattedValue = formatThousandsInput(valor);
+    const digitsBeforeCursor = (valor.slice(0, cursor).match(/\d/g) ?? []).length;
     setValoresCarrito((prev) => ({
       ...prev,
-      [clientId]: { ...prev[clientId], codigo: valor },
+      [clientId]: { ...prev[clientId], codigo: formattedValue },
     }));
-    const codigoEnMiles = Number(valor.replace(",", "."));
+    requestAnimationFrame(() => {
+      const input = document.getElementById(`codigo-${clientId}`);
+      if (input instanceof HTMLInputElement) {
+        const nextCursor = caretAfterDigitCount(formattedValue, digitsBeforeCursor);
+        input.setSelectionRange(nextCursor, nextCursor);
+      }
+    });
+    const codigoEnMiles = parseThousandsInput(formattedValue);
     const valorCodigo =
-      valor.trim() === "" ? 0 : Number.isFinite(codigoEnMiles) && codigoEnMiles >= 0 ? codigoEnMiles * 1000 : 0;
+      formattedValue.trim() === "" ? 0 : codigoEnMiles >= 0 ? codigoEnMiles * 1000 : 0;
     setCarrito((prev) =>
       prev.map((item) =>
         item.clientId === clientId
@@ -533,7 +575,7 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                         <> · Codigo total: {formatCOP(item.valorCodigo * item.cantidad)}</>
                       )}
                     </p>
-                    <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
                         <Label htmlFor={`precio-${item.clientId}`} className="text-sm">
                           Precio unitario
@@ -543,8 +585,10 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                           type="text"
                           inputMode="decimal"
                           value={valoresCarrito[item.clientId]?.precio ?? String(item.precioUnitario)}
-                          onChange={(e) => actualizarPrecio(item.clientId, e.target.value)}
-                          className="h-11"
+                          onChange={(e) =>
+                            actualizarPrecio(item.clientId, e.target.value, e.target.selectionStart ?? e.target.value.length)
+                          }
+                          className="h-14 text-lg sm:h-11 sm:text-sm"
                         />
                       </div>
                       <div className="space-y-1">
@@ -556,8 +600,10 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                           type="text"
                           inputMode="decimal"
                           value={valoresCarrito[item.clientId]?.codigo ?? String(item.valorCodigo / 1000)}
-                          onChange={(e) => actualizarCodigo(item.clientId, e.target.value)}
-                          className="h-11"
+                          onChange={(e) =>
+                            actualizarCodigo(item.clientId, e.target.value, e.target.selectionStart ?? e.target.value.length)
+                          }
+                          className="h-14 text-lg sm:h-11 sm:text-sm"
                         />
                       </div>
                     </div>
