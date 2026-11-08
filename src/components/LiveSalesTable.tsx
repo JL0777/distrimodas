@@ -22,7 +22,11 @@ function formatCOP(valor: number) {
 }
 
 function formatFechaHora(fecha: string) {
-  return new Date(fecha).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" });
+  return new Date(fecha).toLocaleString("es-CO", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "America/Bogota",
+  });
 }
 
 interface LiveSalesTableProps {

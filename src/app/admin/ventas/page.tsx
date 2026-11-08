@@ -19,7 +19,11 @@ function formatCOP(valor: number) {
 }
 
 function formatFecha(fecha: string) {
-  return new Date(fecha).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" });
+  return new Date(fecha).toLocaleString("es-CO", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "America/Bogota",
+  });
 }
 
 interface VentasPageProps {

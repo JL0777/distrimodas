@@ -32,6 +32,8 @@ El usuario `jose` puede consultar las ventas de gorras/sombreros, pavas y guante
 
 En Vercel, configura una variable de entorno `CRON_SECRET` con un valor secreto aleatorio y vuelve a desplegar. El cron liquida cada día a las 00:05 de Colombia las fechas anteriores que tengan ventas y todavía no estén liquidadas; registra como asistentes a los empleados que tuvieron ventas ese día. También recupera fechas pendientes si alguna ejecución diaria no se realizó.
 
+La aplicación configura las sesiones MySQL y la visualización de fechas en la zona horaria de Colombia (UTC-5). No cambies manualmente los valores `fecha` de las ventas existentes para corregir diferencias de hora: la fecha almacenada puede representar correctamente el instante y el desfase estar solo en la zona horaria de consulta o visualización.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

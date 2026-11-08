@@ -30,7 +30,11 @@ function formatCOP(valor: number) {
 }
 
 function formatHora(fecha: string) {
-  return new Date(fecha).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+  return new Date(fecha).toLocaleTimeString("es-CO", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Bogota",
+  });
 }
 
 interface SalesFeedProps {
