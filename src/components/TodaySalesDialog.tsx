@@ -120,7 +120,7 @@ export function TodaySalesDialog({ sedes }: TodaySalesDialogProps) {
           </Button>
         }
       />
-      <DialogContent className="flex h-[92vh] max-h-[92vh] w-[calc(100%-1rem)] max-w-7xl flex-col gap-4 overflow-hidden p-4 sm:p-6">
+      <DialogContent className="flex h-[96dvh] max-h-[96dvh] w-[calc(100vw-1rem)] max-w-none flex-col gap-4 overflow-hidden rounded-2xl p-3 sm:h-[94dvh] sm:max-h-[94dvh] sm:w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-2rem)] sm:p-5 lg:p-6">
         <DialogHeader className="shrink-0 pr-8">
           <DialogTitle className="text-xl">Todas las ventas de hoy</DialogTitle>
           <DialogDescription>
