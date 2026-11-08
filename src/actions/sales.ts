@@ -651,7 +651,7 @@ export async function getAdminSalesCalendar(mes?: string): Promise<AdminSalesCal
               COUNT(*) AS ventas, COALESCE(SUM(total), 0) AS total_ventas
        FROM ventas
        WHERE DATE_FORMAT(fecha, '%Y-%m') = ?
-       GROUP BY DATE(fecha)`,
+       GROUP BY DATE_FORMAT(fecha, '%Y-%m-%d')`,
       [selectedMonth]
     ),
     pool.query(
