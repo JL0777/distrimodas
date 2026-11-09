@@ -1,13 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Mic, Loader2, Minus, Plus, Trash2, ShoppingCart } from "lucide-react";
+import { Check, ChevronDown, Mic, Loader2, Minus, Plus, ShoppingCart, Trash2, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
@@ -327,10 +335,12 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
 
   // --- Checkout ------------------------------------------------------------------
   const [empleadoId, setEmpleadoId] = useState<string>("");
+  const [selectorVendedorAbierto, setSelectorVendedorAbierto] = useState(false);
   const [metodoPago, setMetodoPago] = useState<MetodoPago>("efectivo");
   const [notasTransferencia, setNotasTransferencia] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [mensaje, setMensaje] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
+  const vendedorSeleccionado = empleados.find((empleado) => String(empleado.id) === empleadoId);
 
   function agregarNotaRapida(nota: string) {
     setNotasTransferencia((actual) => {
@@ -698,18 +708,89 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
 
           <div className="space-y-2">
             <Label className="text-sm">Vendedor</Label>
-            <Select value={empleadoId} onValueChange={(value) => setEmpleadoId(value ?? "")}>
-              <SelectTrigger className="h-12 w-full text-base">
-                <SelectValue placeholder="Selecciona el vendedor" />
-              </SelectTrigger>
-              <SelectContent>
-                {empleados.map((empleado) => (
-                  <SelectItem key={empleado.id} value={String(empleado.id)}>
-                    {empleado.nombre}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="xl:hidden">
+              <Dialog open={selectorVendedorAbierto} onOpenChange={setSelectorVendedorAbierto}>
+                <DialogTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-14 w-full justify-between rounded-xl px-4 text-left"
+                    />
+                  }
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                      <UserRound className="size-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        {vendedorSeleccionado ? "Vendedor seleccionado" : "Toca para escoger"}
+                      </span>
+                      <span className="block truncate text-sm font-semibold text-slate-900">
+                        {vendedorSeleccionado?.nombre ?? "Selecciona el vendedor"}
+                      </span>
+                    </span>
+                  </span>
+                  <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                </DialogTrigger>
+                <DialogContent className="max-h-[82dvh] w-[calc(100vw-2rem)] overflow-hidden p-4 sm:max-w-md">
+                  <DialogHeader className="pr-8">
+                    <DialogTitle>Seleccionar vendedor</DialogTitle>
+                    <DialogDescription>
+                      Elige el vendedor que registrará esta venta.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="max-h-[58dvh] space-y-2 overflow-y-auto overscroll-contain">
+                    {empleados.length === 0 ? (
+                      <p className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+                        No hay vendedores disponibles.
+                      </p>
+                    ) : (
+                      empleados.map((empleado) => {
+                        const seleccionado = String(empleado.id) === empleadoId;
+                        return (
+                          <Button
+                            key={empleado.id}
+                            type="button"
+                            variant="outline"
+                            aria-pressed={seleccionado}
+                            onClick={() => {
+                              setEmpleadoId(String(empleado.id));
+                              setSelectorVendedorAbierto(false);
+                            }}
+                            className={`h-14 w-full justify-between rounded-xl px-4 text-left ${
+                              seleccionado
+                                ? "border-emerald-600 bg-emerald-50 text-emerald-900 hover:bg-emerald-50"
+                                : "bg-white"
+                            }`}
+                          >
+                            <span className="truncate pr-3 text-sm font-medium">{empleado.nombre}</span>
+                            {seleccionado && <Check className="size-4 shrink-0 text-emerald-700" />}
+                          </Button>
+                        );
+                      })
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+            <div className="hidden xl:block">
+              <Select value={empleadoId} onValueChange={(value) => setEmpleadoId(value ?? "")}>
+                <SelectTrigger className="h-12 w-full text-base">
+                  <SelectValue placeholder="Selecciona el vendedor">
+                    {vendedorSeleccionado?.nombre}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {empleados.map((empleado) => (
+                    <SelectItem key={empleado.id} value={String(empleado.id)}>
+                      {empleado.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="space-y-3">
