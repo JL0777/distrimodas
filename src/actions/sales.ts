@@ -722,8 +722,19 @@ export interface AdminSalesDayDetails {
     pagoPorEmpleado: number;
   };
   ventas: (VentaFeedItem & { hora: string })[];
-  ventasPorSede: { sede: string; cantidad: number; total: number }[];
+  ventasPorSede: {
+    sede: string;
+    cantidad: number;
+    total: number;
+    codigos: number;
+    netas: number;
+  }[];
   ventasPorMetodo: { metodoPago: MetodoPago; total: number }[];
+  metodosPorSede: { sede: string; metodoPago: MetodoPago; cantidad: number; total: number }[];
+  transferenciasPorSede: {
+    sede: string;
+    notas: { nota: string; cantidad: number; total: number }[];
+  }[];
   vendedores: { empleado: string; ventas: number; total: number }[];
   productos: { producto: string; cantidad: number; total: number }[];
   asistentes: { empleado: string; pago: number }[];
@@ -740,7 +751,16 @@ export async function getAdminSalesDayDetails(fecha: string): Promise<AdminSales
   if (!parsedDate.success) throw new Error("La fecha seleccionada no es válida.");
 
   const pool = getPool();
-  const [salesRows, summaryRows, sedeRows, methodRows, sellerRows, productRows, payrollRows] =
+  const [
+    salesRows,
+    summaryRows,
+    sedeRows,
+    methodRows,
+    sellerRows,
+    productRows,
+    payrollRows,
+    transferNoteRows,
+  ] =
     await Promise.all([
       pool.query(
         `SELECT v.id, DATE_FORMAT(v.fecha, '%H:%i') AS hora,
@@ -778,18 +798,36 @@ export async function getAdminSalesDayDetails(fecha: string): Promise<AdminSales
         [parsedDate.data, parsedDate.data, parsedDate.data, parsedDate.data]
       ),
       pool.query(
-        `SELECT s.nombre AS sede, COUNT(v.id) AS cantidad, COALESCE(SUM(v.total), 0) AS total
+        `SELECT s.nombre AS sede, COALESCE(ventas.cantidad, 0) AS cantidad,
+                COALESCE(ventas.total, 0) AS total,
+                COALESCE(detalle.codigos, 0) AS codigos,
+                COALESCE(detalle.netas, 0) AS netas
          FROM sedes s
-         LEFT JOIN ventas v ON v.sede_id = s.id AND DATE(v.fecha) = ?
-         GROUP BY s.id, s.nombre
-         ORDER BY total DESC, s.nombre`,
-        [parsedDate.data]
+         LEFT JOIN (
+           SELECT sede_id, COUNT(*) AS cantidad, SUM(total) AS total
+           FROM ventas
+           WHERE DATE(fecha) = ?
+           GROUP BY sede_id
+         ) ventas ON ventas.sede_id = s.id
+         LEFT JOIN (
+           SELECT v.sede_id,
+                  SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END) AS codigos,
+                  SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END) AS netas
+           FROM ventas v
+           INNER JOIN detalle_ventas dv ON dv.venta_id = v.id
+           WHERE DATE(v.fecha) = ?
+           GROUP BY v.sede_id
+         ) detalle ON detalle.sede_id = s.id
+         ORDER BY ventas.total DESC, s.nombre`,
+        [parsedDate.data, parsedDate.data]
       ),
       pool.query(
-        `SELECT metodo_pago, COALESCE(SUM(total), 0) AS total
-         FROM ventas
-         WHERE DATE(fecha) = ?
-         GROUP BY metodo_pago`,
+        `SELECT s.nombre AS sede, v.metodo_pago, COUNT(*) AS cantidad, SUM(v.total) AS total
+         FROM ventas v
+         INNER JOIN sedes s ON s.id = v.sede_id
+         WHERE DATE(v.fecha) = ?
+         GROUP BY s.id, s.nombre, v.metodo_pago
+         ORDER BY s.nombre, v.metodo_pago`,
         [parsedDate.data]
       ),
       pool.query(
@@ -823,6 +861,15 @@ export async function getAdminSalesDayDetails(fecha: string): Promise<AdminSales
          WHERE l.fecha = ?
          GROUP BY l.id, l.total_tiemple, l.total_netas, l.pago_por_empleado
          LIMIT 1`,
+        [parsedDate.data]
+      ),
+      pool.query(
+        `SELECT s.nombre AS sede, v.notas_transferencia, COUNT(*) AS cantidad, SUM(v.total) AS total
+         FROM ventas v
+         INNER JOIN sedes s ON s.id = v.sede_id
+         WHERE DATE(v.fecha) = ? AND v.metodo_pago = 'transferencia'
+         GROUP BY s.id, s.nombre, v.notas_transferencia
+         ORDER BY s.nombre, v.notas_transferencia`,
         [parsedDate.data]
       ),
     ]);
@@ -877,12 +924,56 @@ export async function getAdminSalesDayDetails(fecha: string): Promise<AdminSales
     notasTransferencia: row.notas_transferencia,
     articulos: row.articulos ?? "-",
   }));
-  const paymentTotals = new Map(
-    (methodRows[0] as { metodo_pago: MetodoPago; total: number }[]).map((row) => [
-      row.metodo_pago,
-      Number(row.total),
+  const methodsBySite = methodRows[0] as {
+    sede: string;
+    metodo_pago: MetodoPago;
+    cantidad: number;
+    total: number;
+  }[];
+  const paymentTotals = new Map<MetodoPago, number>(
+    (["efectivo", "tarjeta", "transferencia"] as const).map((metodoPago) => [
+      metodoPago,
+      methodsBySite
+        .filter((row) => row.metodo_pago === metodoPago)
+        .reduce((sum, row) => sum + Number(row.total), 0),
     ])
   );
+  const transferNotesBySite = new Map<string, Map<string, { cantidad: number; total: number }>>();
+  for (const row of transferNoteRows[0] as {
+    sede: string;
+    notas_transferencia: string | null;
+    cantidad: number;
+    total: number;
+  }[]) {
+    const notes = transferNotesBySite.get(row.sede) ?? new Map();
+    const note = (row.notas_transferencia ?? "").toLocaleUpperCase("es-CO");
+    const label = note.includes("SONO QR")
+      ? "SONO QR"
+      : note.includes("NEQUI ALEXANDRA")
+        ? "NEQUI ALEXANDRA"
+        : note.includes("QR ALEXANDRA")
+          ? "QR ALEXANDRA"
+          : "Otras notas";
+    const aggregate = notes.get(label) ?? { cantidad: 0, total: 0 };
+    aggregate.cantidad += Number(row.cantidad);
+    aggregate.total += Number(row.total);
+    notes.set(label, aggregate);
+    transferNotesBySite.set(row.sede, notes);
+  }
+  const quickTransferNotes = ["SONO QR", "NEQUI ALEXANDRA", "QR ALEXANDRA"];
+  const transferenciasPorSede = (sedeRows[0] as { sede: string }[]).map(({ sede }) => {
+    const notes = transferNotesBySite.get(sede);
+    const notas = quickTransferNotes.map((nota) => ({
+      nota,
+      cantidad: notes?.get(nota)?.cantidad ?? 0,
+      total: notes?.get(nota)?.total ?? 0,
+    }));
+    const otherNotes = notes?.get("Otras notas");
+    if (otherNotes && otherNotes.cantidad > 0) {
+      notas.push({ nota: "Otras notas", ...otherNotes });
+    }
+    return { sede, notas };
+  });
 
   return {
     fecha: parsedDate.data,
@@ -898,13 +989,30 @@ export async function getAdminSalesDayDetails(fecha: string): Promise<AdminSales
       pagoPorEmpleado: Number(payroll?.pago_por_empleado ?? 0),
     },
     ventas: sales,
-    ventasPorSede: (sedeRows[0] as { sede: string; cantidad: number; total: number }[]).map(
-      (row) => ({ sede: row.sede, cantidad: Number(row.cantidad), total: Number(row.total) })
-    ),
+    ventasPorSede: (sedeRows[0] as {
+      sede: string;
+      cantidad: number;
+      total: number;
+      codigos: number;
+      netas: number;
+    }[]).map((row) => ({
+      sede: row.sede,
+      cantidad: Number(row.cantidad),
+      total: Number(row.total),
+      codigos: Number(row.codigos),
+      netas: Number(row.netas),
+    })),
     ventasPorMetodo: (["efectivo", "tarjeta", "transferencia"] as const).map((metodoPago) => ({
       metodoPago,
       total: paymentTotals.get(metodoPago) ?? 0,
     })),
+    metodosPorSede: methodsBySite.map((row) => ({
+      sede: row.sede,
+      metodoPago: row.metodo_pago,
+      cantidad: Number(row.cantidad),
+      total: Number(row.total),
+    })),
+    transferenciasPorSede,
     vendedores: (sellerRows[0] as { empleado: string; ventas: number; total: number }[]).map(
       (row) => ({ empleado: row.empleado, ventas: Number(row.ventas), total: Number(row.total) })
     ),

@@ -264,29 +264,84 @@ export function SalesDayDetailDialog({ fecha, onOpenChange }: SalesDayDetailDial
 
                 <div className="space-y-5">
                   <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-                    <h3 className="font-semibold text-slate-950">Métodos de pago</h3>
-                    <div className="mt-4 space-y-3">
-                      {activeDetail.ventasPorMetodo.map(({ metodoPago, total }) => {
-                        const payment = PAYMENT_DETAILS[metodoPago];
-                        const Icon = payment.icon;
-                        const share = activeDetail.resumen.totalVentas > 0
-                          ? Math.round((total / activeDetail.resumen.totalVentas) * 100)
-                          : 0;
+                    <div className="flex flex-wrap items-end justify-between gap-2">
+                      <div>
+                        <h3 className="font-semibold text-slate-950">Métodos de pago</h3>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Recaudo separado por sede y tipo de pago
+                        </p>
+                      </div>
+                      <span className="text-sm font-semibold text-slate-900">
+                        {formatCOP(activeDetail.resumen.totalVentas)}
+                      </span>
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      {activeDetail.ventasPorSede.map((site) => {
+                        const transfers = activeDetail.transferenciasPorSede.find(
+                          (row) => row.sede === site.sede
+                        );
                         return (
-                          <div key={metodoPago} className="flex items-center gap-3">
-                            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-600">
-                              <Icon className="size-4" />
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex justify-between gap-2 text-sm">
-                                <span className="capitalize text-slate-600">{payment.label}</span>
-                                <span className="font-medium text-slate-900">{formatCOP(total)}</span>
+                          <article key={site.sede} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                            <div className="mb-3 flex items-center justify-between gap-2">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white text-slate-500 shadow-sm">
+                                  <Building2 className="size-4" />
+                                </span>
+                                <h4 className="truncate text-sm font-semibold text-slate-900">{site.sede}</h4>
                               </div>
-                              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                                <div className="h-full rounded-full bg-rose-500" style={{ width: `${share}%` }} />
-                              </div>
+                              <span className="shrink-0 text-xs text-slate-500">{site.cantidad} ventas</span>
                             </div>
-                          </div>
+                            <div className="space-y-2">
+                              {(["efectivo", "tarjeta", "transferencia"] as const).map((metodoPago) => {
+                                const payment = PAYMENT_DETAILS[metodoPago];
+                                const Icon = payment.icon;
+                                const siteMethod = activeDetail.metodosPorSede.find(
+                                  (row) => row.sede === site.sede && row.metodoPago === metodoPago
+                                );
+                                return (
+                                  <div key={metodoPago} className="rounded-lg bg-white p-2.5">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                                        <Icon className="size-3.5 text-slate-400" />
+                                        {payment.label}
+                                      </span>
+                                      <span className="text-xs font-semibold text-slate-900">
+                                        {formatCOP(siteMethod?.total ?? 0)}
+                                      </span>
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-slate-400">
+                                      {siteMethod?.cantidad ?? 0} {(siteMethod?.cantidad ?? 0) === 1 ? "venta" : "ventas"}
+                                    </p>
+                                    {metodoPago === "transferencia" && (
+                                      <div className="mt-2 space-y-1.5 border-t border-slate-100 pt-2">
+                                        {(transfers?.notas ?? []).map((transfer) => (
+                                          <div
+                                            key={transfer.nota}
+                                            className="flex items-center justify-between gap-2 text-[11px]"
+                                          >
+                                            <span className="min-w-0">
+                                              <span className="block truncate font-medium text-slate-700">
+                                                {transfer.nota}
+                                              </span>
+                                              <span className="text-slate-400">
+                                                {transfer.cantidad} {transfer.cantidad === 1 ? "transferencia" : "transferencias"}
+                                              </span>
+                                            </span>
+                                            <span className="shrink-0 font-semibold text-slate-700">
+                                              {formatCOP(transfer.total)}
+                                            </span>
+                                          </div>
+                                        ))}
+                                        {(transfers?.notas.length ?? 0) === 0 && (
+                                          <p className="text-[11px] text-slate-400">Sin transferencias registradas</p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </article>
                         );
                       })}
                     </div>
@@ -300,11 +355,19 @@ export function SalesDayDetailDialog({ fecha, onOpenChange }: SalesDayDetailDial
                     <div className="mt-3 divide-y divide-slate-100">
                       {activeDetail.ventasPorSede.map((site) => (
                         <div key={site.sede} className="flex items-center justify-between gap-3 py-3 text-sm">
-                          <div>
+                          <div className="min-w-0">
                             <p className="font-medium text-slate-800">{site.sede}</p>
                             <p className="text-xs text-slate-500">{site.cantidad} ventas</p>
+                            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                              <span className="rounded-lg bg-rose-50 px-2 py-1 text-rose-700">
+                                Códigos {formatCOP(site.codigos)}
+                              </span>
+                              <span className="rounded-lg bg-sky-50 px-2 py-1 text-sky-700">
+                                Netas {formatCOP(site.netas)}
+                              </span>
+                            </div>
                           </div>
-                          <p className="font-semibold text-slate-900">{formatCOP(site.total)}</p>
+                          <p className="shrink-0 font-semibold text-slate-900">{formatCOP(site.total)}</p>
                         </div>
                       ))}
                     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Mic, Loader2, Plus, Trash2, ShoppingCart } from "lucide-react";
+import { Mic, Loader2, Minus, Plus, Trash2, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -246,6 +246,27 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
   function actualizarCantidad(clientId: string, cantidad: number) {
     setCarrito((prev) =>
       prev.map((item) => (item.clientId === clientId ? { ...item, cantidad: Math.max(1, cantidad) } : item))
+    );
+  }
+
+  function aplicarPrecioMinimo(clientId: string) {
+    const item = carrito.find((cartItem) => cartItem.clientId === clientId);
+    if (!item || !item.tieneCodigo || item.valorCodigo <= 0 || item.precioUnitario <= item.valorCodigo) {
+      return;
+    }
+
+    const precioMinimo = item.precioUnitario - item.valorCodigo;
+    const precioFormateado = formatThousandsInput(String(precioMinimo));
+    setValoresCarrito((prev) => ({
+      ...prev,
+      [clientId]: { precio: precioFormateado, codigo: "0" },
+    }));
+    setCarrito((prev) =>
+      prev.map((cartItem) =>
+        cartItem.clientId === clientId
+          ? { ...cartItem, precioUnitario: precioMinimo, valorCodigo: 0, tieneCodigo: false }
+          : cartItem
+      )
     );
   }
 
@@ -595,27 +616,65 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                         <Label htmlFor={`codigo-${item.clientId}`} className="text-sm">
                           Codigo por unidad (miles COP)
                         </Label>
-                        <Input
-                          id={`codigo-${item.clientId}`}
-                          type="text"
-                          inputMode="decimal"
-                          value={valoresCarrito[item.clientId]?.codigo ?? String(item.valorCodigo / 1000)}
-                          onChange={(e) =>
-                            actualizarCodigo(item.clientId, e.target.value, e.target.selectionStart ?? e.target.value.length)
-                          }
-                          className="h-14 text-lg sm:h-11 sm:text-sm"
-                        />
+                        <div className="flex items-center gap-2">
+                          <Input
+                            id={`codigo-${item.clientId}`}
+                            type="text"
+                            inputMode="decimal"
+                            value={valoresCarrito[item.clientId]?.codigo ?? String(item.valorCodigo / 1000)}
+                            onChange={(e) =>
+                              actualizarCodigo(item.clientId, e.target.value, e.target.selectionStart ?? e.target.value.length)
+                            }
+                            className="h-14 min-w-0 flex-1 text-lg sm:h-11 sm:text-sm"
+                          />
+                          {item.tieneCodigo && item.valorCodigo > 0 && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-14 shrink-0 px-3 text-sm sm:h-11"
+                              disabled={item.precioUnitario <= item.valorCodigo}
+                              aria-label={`Aplicar precio mínimo a ${item.nombre}`}
+                              onClick={() => aplicarPrecioMinimo(item.clientId)}
+                            >
+                              Mínimo
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 sm:hidden">
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        aria-label={`Disminuir cantidad de ${item.nombre}`}
+                        disabled={item.cantidad <= 1}
+                        onClick={() => actualizarCantidad(item.clientId, item.cantidad - 1)}
+                      >
+                        <Minus className="size-4" />
+                      </Button>
+                      <span className="min-w-7 text-center text-sm font-semibold" aria-live="polite">
+                        {item.cantidad}
+                      </span>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        aria-label={`Aumentar cantidad de ${item.nombre}`}
+                        onClick={() => actualizarCantidad(item.clientId, item.cantidad + 1)}
+                      >
+                        <Plus className="size-4" />
+                      </Button>
+                    </div>
                     <Input
                       type="number"
                       min={1}
                       aria-label={`Cantidad de ${item.nombre}`}
                       value={item.cantidad}
                       onChange={(e) => actualizarCantidad(item.clientId, Number(e.target.value))}
-                      className="h-11 w-20"
+                      className="hidden h-11 w-20 sm:block"
                     />
                     <Button
                       type="button"
