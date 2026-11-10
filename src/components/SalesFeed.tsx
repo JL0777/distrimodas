@@ -100,8 +100,6 @@ export function SalesFeed({ refreshSignal, sedes }: SalesFeedProps) {
     }
   }
 
-  const totalHoy = ventas.reduce((acc, venta) => acc + venta.total, 0);
-
   return (
     <Card>
       <CardHeader>
@@ -142,7 +140,6 @@ export function SalesFeed({ refreshSignal, sedes }: SalesFeedProps) {
                 </option>
               ))}
             </select>
-            <Badge variant="secondary" className="px-4 py-2 text-sm">{formatCOP(totalHoy)}</Badge>
           </div>
         </CardTitle>
       </CardHeader>
