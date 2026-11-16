@@ -6,6 +6,12 @@ import { auth } from "@/auth";
 import { getPool } from "@/lib/db";
 import { closePayrollForDate, type PayrollCloseResult } from "@/lib/payroll-close";
 
+const PAYMENT_METHODS = ["efectivo", "tarjeta", "transferencia"] as const;
+
+function paymentAmountSql(method: (typeof PAYMENT_METHODS)[number]) {
+  return `COALESCE(v.pago_${method}, CASE WHEN v.metodo_pago = '${method}' THEN v.total ELSE 0 END)`;
+}
+
 // Trae las sumatorias de HOY (tiemple y ventas netas) para poder mostrar un
 // preview en vivo en el modal de cierre de dia, antes de confirmar nada.
 export async function getTodaySalesSummary(): Promise<{
@@ -285,12 +291,21 @@ export async function getLiquidacionDetalle(
       [liquidacion.fecha, liquidacion.fecha]
     ),
     pool.query(
-      `SELECT v.sede_id, s.nombre AS sede, v.metodo_pago, COALESCE(SUM(v.total), 0) AS total
-       FROM ventas v
-       INNER JOIN sedes s ON s.id = v.sede_id
-       WHERE DATE(v.fecha) = ?
-       GROUP BY v.sede_id, s.nombre, v.metodo_pago`,
-      [liquidacion.fecha]
+      `SELECT v.sede_id, s.nombre AS sede, 'efectivo' AS metodo_pago,
+              COALESCE(SUM(${paymentAmountSql("efectivo")}), 0) AS total
+       FROM ventas v INNER JOIN sedes s ON s.id = v.sede_id
+       WHERE DATE(v.fecha) = ? GROUP BY v.sede_id, s.nombre
+       UNION ALL
+       SELECT v.sede_id, s.nombre AS sede, 'tarjeta' AS metodo_pago,
+              COALESCE(SUM(${paymentAmountSql("tarjeta")}), 0) AS total
+       FROM ventas v INNER JOIN sedes s ON s.id = v.sede_id
+       WHERE DATE(v.fecha) = ? GROUP BY v.sede_id, s.nombre
+       UNION ALL
+       SELECT v.sede_id, s.nombre AS sede, 'transferencia' AS metodo_pago,
+              COALESCE(SUM(${paymentAmountSql("transferencia")}), 0) AS total
+       FROM ventas v INNER JOIN sedes s ON s.id = v.sede_id
+       WHERE DATE(v.fecha) = ? GROUP BY v.sede_id, s.nombre`,
+      [liquidacion.fecha, liquidacion.fecha, liquidacion.fecha]
     ),
     pool.query(
       `SELECT e.id AS empleado_id, e.nombre AS empleado, le.pago_total
@@ -344,7 +359,7 @@ export async function getLiquidacionDetalle(
       totalCodigos: Number(row.total_codigos),
     })),
     ventasPorMetodo: sedes.flatMap((sede) =>
-      (["efectivo", "tarjeta", "transferencia"] as const).map((metodoPago) => ({
+      PAYMENT_METHODS.map((metodoPago) => ({
         sedeId: sede.sede_id,
         sede: sede.sede,
         metodoPago,

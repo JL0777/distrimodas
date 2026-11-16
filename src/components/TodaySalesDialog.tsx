@@ -212,8 +212,12 @@ export function TodaySalesDialog({ sedes }: TodaySalesDialogProps) {
                     <TableCell className="max-w-56 truncate" title={venta.articulos}>
                       {venta.articulos}
                     </TableCell>
-                    <TableCell className={`capitalize ${venta.metodoPago === "efectivo" ? "" : "font-medium text-emerald-700"}`}>
-                      {venta.metodoPago}
+                    <TableCell className={`capitalize ${venta.pagosPorMetodo.some((pago) => pago.metodoPago !== "efectivo") ? "font-medium text-emerald-700" : ""}`}>
+                      {venta.pagosPorMetodo.length > 1
+                        ? venta.pagosPorMetodo
+                            .map(({ metodoPago: method, total }) => `${method} ${formatCOP(total)}`)
+                            .join(" · ")
+                        : venta.pagosPorMetodo[0]?.metodoPago ?? venta.metodoPago}
                     </TableCell>
                     <TableCell className="max-w-40 truncate" title={venta.notasTransferencia ?? undefined}>
                       {venta.notasTransferencia ?? "-"}

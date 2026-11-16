@@ -1,13 +1,25 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Mic, Loader2, Minus, Plus, ShoppingCart, Trash2, UserRound } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  CircleCheck,
+  Mic,
+  Loader2,
+  Minus,
+  Plus,
+  ShoppingCart,
+  Trash2,
+  UserRound,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +28,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -37,6 +48,11 @@ import type { CartItem, Empleado, MetodoPago, Producto } from "@/lib/types";
 
 const CODIGOS_RAPIDOS = [2, 3, 5, 8, 10];
 const NOTAS_TRANSFERENCIA_RAPIDAS = ["SONO QR", "NEQUI ALEXANDRA", "QR ALEXANDRA"];
+const METODOS_PAGO: { value: MetodoPago; label: string }[] = [
+  { value: "efectivo", label: "Efectivo" },
+  { value: "tarjeta", label: "Tarjeta" },
+  { value: "transferencia", label: "Transferencia" },
+];
 const DEBOUNCE_MS = 300;
 
 function formatCOP(valor: number) {
@@ -74,6 +90,12 @@ function caretAfterDigitCount(value: string, digitCount: number) {
 interface SalesTerminalProps {
   empleados: Empleado[];
   onSaleRegistered?: () => void;
+}
+
+interface PagoCarrito {
+  id: string;
+  metodoPago: MetodoPago;
+  monto: string;
 }
 
 export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProps) {
@@ -332,15 +354,78 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
     () => carrito.reduce((acc, item) => acc + item.precioUnitario * item.cantidad, 0),
     [carrito]
   );
+  const totalCodigoCarrito = useMemo(
+    () => carrito.reduce((acc, item) => acc + item.valorCodigo * item.cantidad, 0),
+    [carrito]
+  );
 
   // --- Checkout ------------------------------------------------------------------
   const [empleadoId, setEmpleadoId] = useState<string>("");
   const [selectorVendedorAbierto, setSelectorVendedorAbierto] = useState(false);
-  const [metodoPago, setMetodoPago] = useState<MetodoPago>("efectivo");
+  const [pagos, setPagos] = useState<PagoCarrito[]>([
+    { id: "pago-inicial", metodoPago: "efectivo", monto: "" },
+  ]);
   const [notasTransferencia, setNotasTransferencia] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [mensaje, setMensaje] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
+  const [confirmacionAbierta, setConfirmacionAbierta] = useState(false);
+  const [ventaRegistrada, setVentaRegistrada] = useState(false);
   const vendedorSeleccionado = empleados.find((empleado) => String(empleado.id) === empleadoId);
+  const pagosConMonto = pagos.map((pago) => ({
+    ...pago,
+    montoTexto: pagos.length === 1 && !pago.monto ? String(totalCarrito) : pago.monto,
+  }));
+  const totalPagado = pagosConMonto.reduce(
+    (total, pago) => total + parseThousandsInput(pago.montoTexto),
+    0
+  );
+  const saldoPorDistribuir = totalCarrito - totalPagado;
+  const transferenciaSeleccionada = pagos.some((pago) => pago.metodoPago === "transferencia");
+
+  useEffect(() => {
+    if (!ventaRegistrada) return;
+    const timeoutId = setTimeout(() => {
+      setConfirmacionAbierta(false);
+      setVentaRegistrada(false);
+    }, 1700);
+    return () => clearTimeout(timeoutId);
+  }, [ventaRegistrada]);
+
+  function agregarMetodoPago() {
+    const metodoDisponible = METODOS_PAGO.find(
+      (metodo) => !pagos.some((pago) => pago.metodoPago === metodo.value)
+    );
+    if (!metodoDisponible) return;
+    setPagos((actuales) => [
+      ...actuales.map((pago) => ({
+        ...pago,
+        monto: actuales.length === 1 && !pago.monto ? String(totalCarrito) : pago.monto,
+      })),
+      { id: crypto.randomUUID(), metodoPago: metodoDisponible.value, monto: "" },
+    ]);
+  }
+
+  function actualizarMetodoPago(id: string, metodoPago: MetodoPago) {
+    setPagos((actuales) =>
+      actuales.map((pago) => (pago.id === id ? { ...pago, metodoPago } : pago))
+    );
+  }
+
+  function actualizarMontoPago(id: string, value: string) {
+    const formattedValue = formatThousandsInput(value);
+    setPagos((actuales) =>
+      actuales.map((pago) => (pago.id === id ? { ...pago, monto: formattedValue } : pago))
+    );
+  }
+
+  function quitarMetodoPago(id: string) {
+    setPagos((actuales) => {
+      const restantes = actuales.filter((pago) => pago.id !== id);
+      return restantes.length === 1
+        ? [{ ...restantes[0], monto: String(totalCarrito) }]
+        : restantes;
+    });
+  }
 
   function agregarNotaRapida(nota: string) {
     setNotasTransferencia((actual) => {
@@ -350,35 +435,64 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
     });
   }
 
-  async function confirmarVenta() {
+  function validarVenta() {
     setMensaje(null);
     if (!empleadoId) {
       setMensaje({ tipo: "error", texto: "Selecciona el vendedor" });
-      return;
+      return false;
     }
     if (carrito.length === 0) {
       setMensaje({ tipo: "error", texto: "Agrega al menos un producto al carrito" });
-      return;
+      return false;
     }
     if (carrito.some((item) => !Number.isFinite(item.precioUnitario) || item.precioUnitario <= 0)) {
       setMensaje({ tipo: "error", texto: "El precio unitario debe ser mayor a 0" });
-      return;
+      return false;
     }
     if (carrito.some((item) => !Number.isFinite(item.valorCodigo) || item.valorCodigo < 0)) {
       setMensaje({ tipo: "error", texto: "El codigo debe ser igual o mayor a 0" });
-      return;
+      return false;
     }
-    if (metodoPago === "transferencia" && !notasTransferencia.trim()) {
+    if (pagos.some((pago) => parseThousandsInput(
+      pagos.length === 1 && !pago.monto ? String(totalCarrito) : pago.monto
+    ) <= 0)) {
+      setMensaje({ tipo: "error", texto: "Cada método de pago debe tener un valor mayor a 0" });
+      return false;
+    }
+    if (Math.abs(totalCarrito - totalPagado) > 0.01) {
+      setMensaje({
+        tipo: "error",
+        texto: `Distribuye el total exacto de la venta. Falta asignar ${formatCOP(Math.abs(saldoPorDistribuir))}.`,
+      });
+      return false;
+    }
+    if (transferenciaSeleccionada && !notasTransferencia.trim()) {
       setMensaje({ tipo: "error", texto: "Las notas de transferencia son obligatorias" });
-      return;
+      return false;
     }
+    return true;
+  }
 
+  function solicitarConfirmacionVenta() {
+    if (!validarVenta()) return;
+    if (window.matchMedia("(max-width: 1279px), (pointer: coarse)").matches) {
+      setConfirmacionAbierta(true);
+    } else {
+      void registrarVenta();
+    }
+  }
+
+  async function registrarVenta() {
+    if (!validarVenta()) return;
     setEnviando(true);
     try {
       const resultado = await registerSale({
         empleadoId: Number(empleadoId),
-        metodoPago,
-        notasTransferencia: metodoPago === "transferencia" ? notasTransferencia.trim() : undefined,
+        pagos: pagosConMonto.map((pago) => ({
+          metodoPago: pago.metodoPago,
+          monto: parseThousandsInput(pago.montoTexto),
+        })),
+        notasTransferencia: transferenciaSeleccionada ? notasTransferencia.trim() : undefined,
         items: carrito.map((item) => ({
           productoId: item.productoId,
           nombre: item.nombre,
@@ -391,13 +505,20 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
 
       if (resultado.success) {
         setMensaje({ tipo: "ok", texto: `Venta registrada correctamente` });
+        setVentaRegistrada(true);
         setCarrito([]);
         setValoresCarrito({});
         setNotasTransferencia("");
+        setPagos([{ id: crypto.randomUUID(), metodoPago: "efectivo", monto: "" }]);
         onSaleRegistered?.();
       } else {
         setMensaje({ tipo: "error", texto: resultado.error ?? "No se pudo registrar la venta" });
       }
+    } catch (error) {
+      setMensaje({
+        tipo: "error",
+        texto: error instanceof Error ? error.message : "No se pudo completar el registro de la venta.",
+      });
     } finally {
       setEnviando(false);
     }
@@ -794,25 +915,96 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
           </div>
 
           <div className="space-y-3">
-            <Label className="text-sm">Método de pago</Label>
-            <RadioGroup
-              value={metodoPago}
-              onValueChange={(v) => setMetodoPago(v as MetodoPago)}
-              className="grid grid-cols-1 gap-2 sm:grid-cols-3"
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <Label className="text-sm">Métodos de pago</Label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Distribuye el total sin registrar ventas separadas.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5 rounded-xl"
+                onClick={agregarMetodoPago}
+                disabled={pagos.length >= METODOS_PAGO.length}
+              >
+                <Plus className="size-4" />
+                Agregar método
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {pagosConMonto.map((pago) => (
+                <div
+                  key={pago.id}
+                  className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.75rem] items-center gap-2 rounded-xl border border-slate-200 bg-white p-2"
+                >
+                  <select
+                    aria-label="Método de pago"
+                    value={pago.metodoPago}
+                    onChange={(event) =>
+                      actualizarMetodoPago(pago.id, event.target.value as MetodoPago)
+                    }
+                    className="h-11 min-w-0 rounded-lg border border-input bg-white px-2 text-sm font-medium outline-none focus:border-primary/50 focus:ring-4 focus:ring-primary/10"
+                  >
+                    {METODOS_PAGO.map((metodo) => (
+                      <option
+                        key={metodo.value}
+                        value={metodo.value}
+                        disabled={pagos.some(
+                          (seleccionado) =>
+                            seleccionado.id !== pago.id && seleccionado.metodoPago === metodo.value
+                        )}
+                      >
+                        {metodo.label}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    inputMode="decimal"
+                    aria-label={`Monto por ${METODOS_PAGO.find((metodo) => metodo.value === pago.metodoPago)?.label}`}
+                    value={pago.montoTexto}
+                    onChange={(event) => actualizarMontoPago(pago.id, event.target.value)}
+                    placeholder="$ 0"
+                    className="h-11 min-w-0 text-right font-semibold"
+                  />
+                  {pagos.length > 1 ? (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      aria-label={`Quitar método ${pago.metodoPago}`}
+                      onClick={() => quitarMetodoPago(pago.id)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  ) : (
+                    <span aria-hidden="true" />
+                  )}
+                </div>
+              ))}
+            </div>
+            <div
+              className={`flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm ${
+                Math.abs(saldoPorDistribuir) <= 0.01
+                  ? "bg-emerald-50 text-emerald-800"
+                  : "bg-amber-50 text-amber-900"
+              }`}
+              aria-live="polite"
             >
-              <label className="flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm">
-                <RadioGroupItem value="efectivo" /> Efectivo
-              </label>
-              <label className="flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm">
-                <RadioGroupItem value="tarjeta" /> Tarjeta
-              </label>
-              <label className="flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm">
-                <RadioGroupItem value="transferencia" /> Transferencia
-              </label>
-            </RadioGroup>
+              <span>Asignado {formatCOP(totalPagado)} de {formatCOP(totalCarrito)}</span>
+              {Math.abs(saldoPorDistribuir) <= 0.01 ? (
+                <span className="font-semibold">Completo</span>
+              ) : (
+                <span className="font-semibold">
+                  {saldoPorDistribuir > 0 ? "Falta" : "Excede"} {formatCOP(Math.abs(saldoPorDistribuir))}
+                </span>
+              )}
+            </div>
           </div>
 
-          {metodoPago === "transferencia" && (
+          {transferenciaSeleccionada && (
             <div className="space-y-1.5">
               <Label>Opciones rápidas</Label>
               <div className="flex flex-wrap gap-2">
@@ -845,11 +1037,166 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
             </p>
           )}
 
-          <Button type="button" size="lg" className="min-h-12 w-full text-base" disabled={enviando} onClick={confirmarVenta}>
-            {enviando ? <Loader2 className="size-4 animate-spin" /> : "Confirmar Venta"}
+          <Button
+            type="button"
+            size="lg"
+            className="min-h-12 w-full text-base"
+            disabled={enviando}
+            onClick={solicitarConfirmacionVenta}
+          >
+            {enviando ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <>
+                <span className="xl:hidden">Revisar venta</span>
+                <span className="hidden xl:inline">Confirmar Venta</span>
+              </>
+            )}
           </Button>
         </CardContent>
       </Card>
+      <Dialog
+        open={confirmacionAbierta}
+        onOpenChange={(open) => {
+          if (enviando) return;
+          setConfirmacionAbierta(open);
+          if (!open) setVentaRegistrada(false);
+        }}
+      >
+        <DialogContent className="max-h-[90dvh] w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl p-4 sm:max-w-lg sm:p-6">
+          {ventaRegistrada ? (
+            <div className="flex flex-col items-center py-7 text-center">
+              <span className="relative mb-5 flex size-28 items-center justify-center">
+                <span className="absolute inset-0 rounded-full border-4 border-emerald-300 motion-safe:animate-[ping_1.4s_ease-out_1]" />
+                <span className="flex size-24 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 shadow-inner motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-500">
+                  <CircleCheck className="size-16" strokeWidth={2.2} />
+                </span>
+              </span>
+              <DialogTitle className="text-2xl font-bold text-emerald-800">
+                ¡Venta registrada!
+              </DialogTitle>
+              <DialogDescription className="mt-2">
+                La venta quedó guardada correctamente.
+              </DialogDescription>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-6 min-h-11 rounded-xl"
+                onClick={() => {
+                  setConfirmacionAbierta(false);
+                  setVentaRegistrada(false);
+                }}
+              >
+                Listo
+              </Button>
+            </div>
+          ) : (
+            <>
+              <DialogHeader className="pr-8">
+                <DialogTitle className="text-xl">Revisa la venta</DialogTitle>
+                <DialogDescription>
+                  Confirma los productos, el código y cómo se recibió el pago.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                <div className="rounded-2xl bg-slate-950 p-4 text-white">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-300">
+                    Total de la venta
+                  </p>
+                  <p className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">
+                    {formatCOP(totalCarrito)}
+                  </p>
+                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/15 pt-3 text-sm">
+                    <span className="text-slate-300">Código total</span>
+                    <span className="font-semibold">{formatCOP(totalCodigoCarrito)}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-sm font-semibold text-slate-900">
+                    Productos ({carrito.length})
+                  </p>
+                  <div className="max-h-44 space-y-2 overflow-y-auto rounded-xl border p-3">
+                    {carrito.map((item) => (
+                      <div key={item.clientId} className="flex justify-between gap-3 text-sm">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-slate-800">{item.nombre}</p>
+                          <p className="text-xs text-slate-500">
+                            {item.cantidad} × {formatCOP(item.precioUnitario)}
+                            {item.valorCodigo > 0
+                              ? ` · Código ${formatCOP(item.valorCodigo * item.cantidad)}`
+                              : " · Venta neta"}
+                          </p>
+                        </div>
+                        <span className="shrink-0 font-semibold text-slate-900">
+                          {formatCOP(item.precioUnitario * item.cantidad)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-slate-900">Distribución del pago</p>
+                    <span className="text-sm font-bold text-slate-900">{formatCOP(totalPagado)}</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {pagosConMonto.map((pago) => (
+                      <div key={pago.id} className="flex justify-between gap-3 text-sm">
+                        <span className="capitalize text-slate-600">{pago.metodoPago}</span>
+                        <span className="font-medium text-slate-900">
+                          {formatCOP(parseThousandsInput(pago.montoTexto))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {transferenciaSeleccionada && (
+                    <p className="mt-2 border-t pt-2 text-xs text-slate-500">
+                      Nota: {notasTransferencia || "Sin nota"}
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                  Vendedor: <span className="font-semibold text-slate-900">
+                    {vendedorSeleccionado?.nombre ?? "Sin seleccionar"}
+                  </span>
+                </div>
+                {mensaje?.tipo === "error" && (
+                  <p role="alert" className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {mensaje.texto}
+                  </p>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-12 rounded-xl"
+                    disabled={enviando}
+                    onClick={() => setConfirmacionAbierta(false)}
+                  >
+                    Volver a editar
+                  </Button>
+                  <Button
+                    type="button"
+                    className="min-h-12 rounded-xl bg-emerald-700 hover:bg-emerald-800"
+                    disabled={enviando || Math.abs(totalCarrito - totalPagado) > 0.01}
+                    onClick={() => void registrarVenta()}
+                  >
+                    {enviando ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      "Confirmar venta"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

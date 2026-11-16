@@ -97,7 +97,8 @@ export async function getJoseWeeklyReport(weekStart?: string): Promise<JoseWeekl
   const [itemRows] = await pool.query(
     `SELECT v.id AS sale_id, dv.id AS item_id, v.fecha, e.nombre AS vendedor, s.nombre AS sede,
             dv.nombre_producto AS articulo, dv.cantidad, dv.precio_unitario,
-            dv.valor_codigo, v.metodo_pago,
+            dv.valor_codigo, v.total, v.metodo_pago,
+            v.pago_efectivo, v.pago_tarjeta, v.pago_transferencia,
             CASE
               WHEN LOWER(dv.nombre_producto) LIKE '%gorra%'
                 OR LOWER(dv.nombre_producto) LIKE '%sombrero%' THEN 'gorra'
@@ -189,7 +190,11 @@ export async function getJoseWeeklyReport(weekStart?: string): Promise<JoseWeekl
         cantidad: number;
         precio_unitario: number;
         valor_codigo: number;
+        total: number;
         metodo_pago: string;
+        pago_efectivo: number | null;
+        pago_tarjeta: number | null;
+        pago_transferencia: number | null;
         categoria: JoseProductCategory;
       }[]
     ).map((row) => ({
@@ -204,7 +209,14 @@ export async function getJoseWeeklyReport(weekStart?: string): Promise<JoseWeekl
       precioUnitario: Number(row.precio_unitario),
       total: Number(row.precio_unitario) * Number(row.cantidad),
       totalCodigo: Number(row.valor_codigo) * Number(row.cantidad),
-      metodoPago: row.metodo_pago,
+      metodoPago: [
+        ["efectivo", row.pago_efectivo ?? (row.metodo_pago === "efectivo" ? row.total : 0)],
+        ["tarjeta", row.pago_tarjeta ?? (row.metodo_pago === "tarjeta" ? row.total : 0)],
+        ["transferencia", row.pago_transferencia ?? (row.metodo_pago === "transferencia" ? row.total : 0)],
+      ]
+        .filter(([, amount]) => Number(amount) > 0)
+        .map(([method, amount]) => `${method} ${Number(amount).toLocaleString("es-CO")}`)
+        .join(" · "),
     })),
     weeks,
   };

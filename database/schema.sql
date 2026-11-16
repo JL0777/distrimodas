@@ -63,6 +63,9 @@ CREATE TABLE IF NOT EXISTS ventas (
   sede_id INT NOT NULL,
   total DECIMAL(12,2) NOT NULL,
   metodo_pago ENUM('efectivo', 'tarjeta', 'transferencia') NOT NULL,
+  pago_efectivo DECIMAL(12,2) NULL,
+  pago_tarjeta DECIMAL(12,2) NULL,
+  pago_transferencia DECIMAL(12,2) NULL,
   notas_transferencia VARCHAR(255) NULL,
   fecha TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_ventas_empleado

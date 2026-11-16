@@ -102,7 +102,8 @@ export function SalesDayDetailDialog({ fecha, onOpenChange }: SalesDayDetailDial
       (activeDetail?.ventas ?? []).filter(
         (sale) =>
           (sedeSeleccionada === "todas" || sale.sede === sedeSeleccionada) &&
-          (metodoSeleccionado === "todos" || sale.metodoPago === metodoSeleccionado)
+      (metodoSeleccionado === "todos" ||
+        sale.pagosPorMetodo.some((pago) => pago.metodoPago === metodoSeleccionado))
       ),
     [activeDetail, sedeSeleccionada, metodoSeleccionado]
   );
@@ -248,8 +249,12 @@ export function SalesDayDetailDialog({ fecha, onOpenChange }: SalesDayDetailDial
                             <TableCell className="font-medium">{sale.empleado}</TableCell>
                             <TableCell>{sale.sede}</TableCell>
                             <TableCell className="max-w-56 truncate" title={sale.articulos}>{sale.articulos}</TableCell>
-                            <TableCell className={`capitalize ${sale.metodoPago === "efectivo" ? "" : "font-medium text-emerald-700"}`}>
-                              {sale.metodoPago}
+                            <TableCell className={`capitalize ${sale.pagosPorMetodo.some((pago) => pago.metodoPago !== "efectivo") ? "font-medium text-emerald-700" : ""}`}>
+                              {sale.pagosPorMetodo.length > 1
+                                ? sale.pagosPorMetodo
+                                    .map(({ metodoPago, total }) => `${metodoPago} ${formatCOP(total)}`)
+                                    .join(" · ")
+                                : sale.pagosPorMetodo[0]?.metodoPago ?? sale.metodoPago}
                             </TableCell>
                             <TableCell className="text-right whitespace-nowrap">
                               {sale.totalCodigo > 0 ? formatCOP(sale.totalCodigo) : "-"}

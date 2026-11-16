@@ -114,7 +114,7 @@ export function LiveSalesTable({ sedeId, sedes, onSedeChange }: LiveSalesTablePr
                   <TableHead>Articulo</TableHead>
                   <TableHead>Metodo</TableHead>
                   <TableHead>Nota</TableHead>
-                  <TableHead>Codigo / neto</TableHead>
+                  <TableHead>Codigo</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                 </TableRow>
               </TableHeader>
@@ -123,7 +123,7 @@ export function LiveSalesTable({ sedeId, sedes, onSedeChange }: LiveSalesTablePr
                   <TableRow
                     key={venta.id}
                     className={
-                      resaltarNoEfectivo && venta.metodoPago !== "efectivo"
+                      resaltarNoEfectivo && venta.pagosPorMetodo.some((pago) => pago.metodoPago !== "efectivo")
                         ? "bg-emerald-100/75 hover:bg-emerald-100"
                         : ""
                     }
@@ -136,30 +136,26 @@ export function LiveSalesTable({ sedeId, sedes, onSedeChange }: LiveSalesTablePr
                     </TableCell>
                     <TableCell
                       className={`capitalize ${
-                        venta.metodoPago !== "efectivo" ? "font-semibold text-emerald-700" : ""
+                        venta.pagosPorMetodo.some((pago) => pago.metodoPago !== "efectivo")
+                          ? "font-semibold text-emerald-700"
+                          : ""
                       }`}
                     >
-                      {venta.metodoPago}
+                      {venta.pagosPorMetodo.length > 1
+                        ? venta.pagosPorMetodo
+                            .map(({ metodoPago, total }) => `${metodoPago} ${formatCOP(total)}`)
+                            .join(" · ")
+                        : venta.pagosPorMetodo[0]?.metodoPago ?? venta.metodoPago}
                     </TableCell>
                     <TableCell className="max-w-40 truncate" title={venta.notasTransferencia ?? undefined}>
                       {venta.notasTransferencia ?? "-"}
                     </TableCell>
                     <TableCell>
-                      <div className="space-y-1">
-                        <div>
-                          <span className="text-xs text-muted-foreground">Código </span>
-                          {venta.totalCodigo > 0 ? (
-                            <Badge variant="outline">{formatCOP(venta.totalCodigo)}</Badge>
-                          ) : (
-                            <span>-</span>
-                          )}
-                        </div>
-                        {venta.totalNeta > 0 && (
-                          <div className="text-xs font-medium text-sky-700">
-                            Neto {formatCOP(venta.totalNeta)}
-                          </div>
-                        )}
-                      </div>
+                      {venta.totalCodigo > 0 ? (
+                        <Badge variant="outline">{formatCOP(venta.totalCodigo)}</Badge>
+                      ) : (
+                        "-"
+                      )}
                     </TableCell>
                     <TableCell className="text-right font-medium">{formatCOP(venta.total)}</TableCell>
                   </TableRow>

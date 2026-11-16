@@ -22,18 +22,40 @@ const itemVentaSchema = z.object({
   }
 );
 
+const METODOS_PAGO = ["efectivo", "tarjeta", "transferencia"] as const;
+
+const pagoVentaSchema = z.object({
+  metodoPago: z.enum(METODOS_PAGO),
+  monto: z.number().positive(),
+});
+
 const registrarVentaSchema = z.object({
   empleadoId: z.number().int().positive(),
-  metodoPago: z.enum(["efectivo", "tarjeta", "transferencia"]),
+  pagos: z.array(pagoVentaSchema).min(1).max(METODOS_PAGO.length),
   notasTransferencia: z.string().trim().optional(),
   items: z.array(itemVentaSchema).min(1, "El carrito no puede estar vacio"),
-}).refine(
-  (data) => data.metodoPago !== "transferencia" || !!data.notasTransferencia,
-  {
-    message: "Las notas de transferencia son obligatorias para este metodo de pago",
-    path: ["notasTransferencia"],
+}).superRefine((data, ctx) => {
+  const methods = data.pagos.map((pago) => pago.metodoPago);
+  if (new Set(methods).size !== methods.length) {
+    ctx.addIssue({ code: "custom", message: "No repitas métodos de pago.", path: ["pagos"] });
   }
-);
+  if (methods.includes("transferencia") && !data.notasTransferencia) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Las notas de transferencia son obligatorias para este metodo de pago",
+      path: ["notasTransferencia"],
+    });
+  }
+  const totalVenta = data.items.reduce((total, item) => total + item.precioUnitario * item.cantidad, 0);
+  const totalPagos = data.pagos.reduce((total, pago) => total + pago.monto, 0);
+  if (Math.abs(totalVenta - totalPagos) > 0.01) {
+    ctx.addIssue({
+      code: "custom",
+      message: "La suma de los métodos de pago debe coincidir con el total de la venta.",
+      path: ["pagos"],
+    });
+  }
+});
 
 export type RegistrarVentaInput = z.infer<typeof registrarVentaSchema>;
 
@@ -90,15 +112,25 @@ export async function registerSale(
       0
     );
 
+    const montoPorMetodo: Record<MetodoPago, number> = {
+      efectivo: data.pagos.find((pago) => pago.metodoPago === "efectivo")?.monto ?? 0,
+      tarjeta: data.pagos.find((pago) => pago.metodoPago === "tarjeta")?.monto ?? 0,
+      transferencia: data.pagos.find((pago) => pago.metodoPago === "transferencia")?.monto ?? 0,
+    };
     const [ventaResult] = await conn.query(
-      `INSERT INTO ventas (empleado_id, sede_id, total, metodo_pago, notas_transferencia)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO ventas
+         (empleado_id, sede_id, total, metodo_pago, pago_efectivo, pago_tarjeta,
+          pago_transferencia, notas_transferencia)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.empleadoId,
         empleado.sede_id,
         total,
-        data.metodoPago,
-        data.metodoPago === "transferencia" ? data.notasTransferencia : null,
+        data.pagos[0].metodoPago,
+        montoPorMetodo.efectivo,
+        montoPorMetodo.tarjeta,
+        montoPorMetodo.transferencia,
+        montoPorMetodo.transferencia > 0 ? data.notasTransferencia : null,
       ]
     );
     const ventaId = (ventaResult as { insertId: number }).insertId;
@@ -142,10 +174,40 @@ export interface VentaFeedItem {
   sede: string;
   total: number;
   metodoPago: MetodoPago;
+  pagosPorMetodo: { metodoPago: MetodoPago; total: number }[];
   totalCodigo: number;
   totalNeta: number;
   notasTransferencia: string | null;
   articulos: string;
+}
+
+type VentaConPagos = {
+  total: number;
+  metodo_pago: MetodoPago;
+  pago_efectivo: number | null;
+  pago_tarjeta: number | null;
+  pago_transferencia: number | null;
+};
+
+function mapearPagosVenta(venta: VentaConPagos) {
+  const amounts: Record<MetodoPago, number> = {
+    efectivo: Number(venta.pago_efectivo ?? (venta.metodo_pago === "efectivo" ? venta.total : 0)),
+    tarjeta: Number(venta.pago_tarjeta ?? (venta.metodo_pago === "tarjeta" ? venta.total : 0)),
+    transferencia: Number(
+      venta.pago_transferencia ?? (venta.metodo_pago === "transferencia" ? venta.total : 0)
+    ),
+  };
+  return {
+    metodoPago: venta.metodo_pago,
+    pagosPorMetodo: METODOS_PAGO
+      .filter((metodoPago) => amounts[metodoPago] > 0)
+      .map((metodoPago) => ({ metodoPago, total: amounts[metodoPago] })),
+  };
+}
+
+function montoPorMetodoSql(metodoPago: MetodoPago, alias = "v") {
+  const column = `pago_${metodoPago}`;
+  return `COALESCE(${alias}.${column}, CASE WHEN ${alias}.metodo_pago = '${metodoPago}' THEN ${alias}.total ELSE 0 END)`;
 }
 
 // Ultimas ventas de HOY (para la lista en vivo del terminal de vendedor y del dashboard admin).
@@ -154,7 +216,8 @@ async function loadTodaySalesList(
 ): Promise<VentaFeedItem[]> {
   const pool = getPool();
   const [rows] = await pool.query(
-    `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
+    `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.pago_efectivo, v.pago_tarjeta,
+            v.pago_transferencia, v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
             COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_codigo,
             COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_neta,
             GROUP_CONCAT(
@@ -169,7 +232,8 @@ async function loadTodaySalesList(
      LEFT JOIN productos p ON p.id = dv.producto_id
      WHERE DATE(v.fecha) = CURDATE()
        AND (? IS NULL OR v.sede_id = ?)
-     GROUP BY v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre, s.nombre
+     GROUP BY v.id, v.fecha, v.total, v.metodo_pago, v.pago_efectivo, v.pago_tarjeta,
+              v.pago_transferencia, v.notas_transferencia, e.nombre, s.nombre
      ORDER BY v.fecha DESC, v.id DESC
      LIMIT 50`,
     [sedeId, sedeId]
@@ -180,6 +244,9 @@ async function loadTodaySalesList(
       fecha: string;
       total: number;
       metodo_pago: MetodoPago;
+      pago_efectivo: number | null;
+      pago_tarjeta: number | null;
+      pago_transferencia: number | null;
       notas_transferencia: string | null;
       empleado: string;
       sede: string;
@@ -193,7 +260,7 @@ async function loadTodaySalesList(
     empleado: row.empleado,
     sede: row.sede,
     total: Number(row.total),
-    metodoPago: row.metodo_pago,
+    ...mapearPagosVenta(row),
     totalCodigo: Number(row.total_codigo),
     totalNeta: Number(row.total_neta),
     notasTransferencia: row.notas_transferencia,
@@ -246,8 +313,7 @@ export async function getTodaySalesPage(input: {
     params.push(sedeId);
   }
   if (metodoPago !== null) {
-    condiciones.push("v.metodo_pago = ?");
-    params.push(metodoPago);
+    condiciones.push(`${montoPorMetodoSql(metodoPago)} > 0`);
   }
   if (busqueda) {
     const termino = `%${busqueda}%`;
@@ -279,7 +345,8 @@ export async function getTodaySalesPage(input: {
   const totalRegistros = Number(summary?.total_registros ?? 0);
 
   const [rows] = await pool.query(
-    `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia,
+    `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.pago_efectivo, v.pago_tarjeta,
+            v.pago_transferencia, v.notas_transferencia,
             e.nombre AS empleado, s.nombre AS sede,
             COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_codigo,
             COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_neta,
@@ -294,7 +361,8 @@ export async function getTodaySalesPage(input: {
      LEFT JOIN detalle_ventas dv ON dv.venta_id = v.id
      LEFT JOIN productos p ON p.id = dv.producto_id
      ${whereClause}
-     GROUP BY v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre, s.nombre
+     GROUP BY v.id, v.fecha, v.total, v.metodo_pago, v.pago_efectivo, v.pago_tarjeta,
+              v.pago_transferencia, v.notas_transferencia, e.nombre, s.nombre
      ORDER BY v.fecha DESC, v.id DESC
      LIMIT ? OFFSET ?`,
     [...params, TODAY_SALES_PAGE_SIZE, offset]
@@ -304,6 +372,9 @@ export async function getTodaySalesPage(input: {
     fecha: string;
     total: number;
     metodo_pago: MetodoPago;
+    pago_efectivo: number | null;
+    pago_tarjeta: number | null;
+    pago_transferencia: number | null;
     notas_transferencia: string | null;
     empleado: string;
     sede: string;
@@ -316,7 +387,7 @@ export async function getTodaySalesPage(input: {
     empleado: row.empleado,
     sede: row.sede,
     total: Number(row.total),
-    metodoPago: row.metodo_pago,
+    ...mapearPagosVenta(row),
     totalCodigo: Number(row.total_codigo),
     totalNeta: Number(row.total_neta),
     notasTransferencia: row.notas_transferencia,
@@ -346,6 +417,7 @@ export interface VentaDetalle {
   empleado: string;
   sede: string;
   metodoPago: MetodoPago;
+  pagosPorMetodo: { metodoPago: MetodoPago; total: number }[];
   notasTransferencia: string | null;
   total: number;
   items: VentaDetalleItem[];
@@ -355,7 +427,8 @@ export interface VentaDetalle {
 export async function getSaleDetail(ventaId: number): Promise<VentaDetalle | null> {
   const pool = getPool();
   const [ventaRows] = await pool.query(
-    `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede
+    `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.pago_efectivo, v.pago_tarjeta,
+            v.pago_transferencia, v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede
      FROM ventas v
      INNER JOIN empleados e ON e.id = v.empleado_id
      INNER JOIN sedes s ON s.id = v.sede_id
@@ -369,6 +442,9 @@ export async function getSaleDetail(ventaId: number): Promise<VentaDetalle | nul
       fecha: string;
       total: number;
       metodo_pago: MetodoPago;
+      pago_efectivo: number | null;
+      pago_tarjeta: number | null;
+      pago_transferencia: number | null;
       notas_transferencia: string | null;
       empleado: string;
       sede: string;
@@ -391,7 +467,7 @@ export async function getSaleDetail(ventaId: number): Promise<VentaDetalle | nul
     fecha: venta.fecha,
     empleado: venta.empleado,
     sede: venta.sede,
-    metodoPago: venta.metodo_pago,
+    ...mapearPagosVenta(venta),
     notasTransferencia: venta.notas_transferencia,
     total: Number(venta.total),
     items: (
@@ -492,8 +568,7 @@ export async function listAllSales(filtros: FiltrosVentas = {}): Promise<ListaVe
     params.push(parsed.hasta);
   }
   if (parsed.metodoPago) {
-    condiciones.push("v.metodo_pago = ?");
-    params.push(parsed.metodoPago);
+    condiciones.push(`${montoPorMetodoSql(parsed.metodoPago)} > 0`);
   }
   if (parsed.busqueda) {
     const termino = `%${parsed.busqueda}%`;
@@ -519,7 +594,8 @@ export async function listAllSales(filtros: FiltrosVentas = {}): Promise<ListaVe
   const whereClause = condiciones.length > 0 ? `WHERE ${condiciones.join(" AND ")}` : "";
 
   const [rows] = await pool.query(
-    `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
+    `SELECT v.id, v.fecha, v.total, v.metodo_pago, v.pago_efectivo, v.pago_tarjeta,
+            v.pago_transferencia, v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
             COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_codigo,
             COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_neta,
             GROUP_CONCAT(
@@ -533,18 +609,23 @@ export async function listAllSales(filtros: FiltrosVentas = {}): Promise<ListaVe
      LEFT JOIN detalle_ventas dv ON dv.venta_id = v.id
      LEFT JOIN productos p ON p.id = dv.producto_id
      ${whereClause}
-     GROUP BY v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre, s.nombre
+     GROUP BY v.id, v.fecha, v.total, v.metodo_pago, v.pago_efectivo, v.pago_tarjeta,
+              v.pago_transferencia, v.notas_transferencia, e.nombre, s.nombre
      ORDER BY v.fecha DESC, v.id DESC
      LIMIT 200`,
     params
   );
 
   const [totales] = await pool.query(
-    `SELECT v.metodo_pago, COALESCE(SUM(v.total), 0) AS total
-     FROM ventas v
-     ${whereClause}
-     GROUP BY v.metodo_pago`,
-    params
+    `SELECT 'efectivo' AS metodo_pago, COALESCE(SUM(${montoPorMetodoSql("efectivo")}), 0) AS total
+       FROM ventas v ${whereClause}
+     UNION ALL
+     SELECT 'tarjeta' AS metodo_pago, COALESCE(SUM(${montoPorMetodoSql("tarjeta")}), 0) AS total
+       FROM ventas v ${whereClause}
+     UNION ALL
+     SELECT 'transferencia' AS metodo_pago, COALESCE(SUM(${montoPorMetodoSql("transferencia")}), 0) AS total
+       FROM ventas v ${whereClause}`,
+    [...params, ...params, ...params]
   );
 
   const totalesPorMetodo: Record<MetodoPago, number> = { efectivo: 0, tarjeta: 0, transferencia: 0 };
@@ -558,6 +639,9 @@ export async function listAllSales(filtros: FiltrosVentas = {}): Promise<ListaVe
       fecha: string;
       total: number;
       metodo_pago: MetodoPago;
+      pago_efectivo: number | null;
+      pago_tarjeta: number | null;
+      pago_transferencia: number | null;
       notas_transferencia: string | null;
       empleado: string;
       sede: string;
@@ -571,7 +655,7 @@ export async function listAllSales(filtros: FiltrosVentas = {}): Promise<ListaVe
     empleado: row.empleado,
     sede: row.sede,
     total: Number(row.total),
-    metodoPago: row.metodo_pago,
+    ...mapearPagosVenta(row),
     totalCodigo: Number(row.total_codigo),
     totalNeta: Number(row.total_neta),
     notasTransferencia: row.notas_transferencia,
@@ -765,6 +849,7 @@ export async function getAdminSalesDayDetails(fecha: string): Promise<AdminSales
       pool.query(
         `SELECT v.id, DATE_FORMAT(v.fecha, '%H:%i') AS hora,
                 DATE_FORMAT(v.fecha, '%Y-%m-%d') AS fecha, v.total, v.metodo_pago,
+                v.pago_efectivo, v.pago_tarjeta, v.pago_transferencia,
                 v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
                 COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_codigo,
                 COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_neta,
@@ -779,7 +864,8 @@ export async function getAdminSalesDayDetails(fecha: string): Promise<AdminSales
          LEFT JOIN detalle_ventas dv ON dv.venta_id = v.id
          LEFT JOIN productos p ON p.id = dv.producto_id
          WHERE DATE(v.fecha) = ?
-         GROUP BY v.id, v.fecha, v.total, v.metodo_pago, v.notas_transferencia, e.nombre, s.nombre
+         GROUP BY v.id, v.fecha, v.total, v.metodo_pago, v.pago_efectivo, v.pago_tarjeta,
+                  v.pago_transferencia, v.notas_transferencia, e.nombre, s.nombre
          ORDER BY v.fecha DESC, v.id DESC`,
         [parsedDate.data]
       ),
@@ -822,13 +908,28 @@ export async function getAdminSalesDayDetails(fecha: string): Promise<AdminSales
         [parsedDate.data, parsedDate.data]
       ),
       pool.query(
-        `SELECT s.nombre AS sede, v.metodo_pago, COUNT(*) AS cantidad, SUM(v.total) AS total
-         FROM ventas v
-         INNER JOIN sedes s ON s.id = v.sede_id
+        `SELECT s.nombre AS sede, 'efectivo' AS metodo_pago,
+                COUNT(CASE WHEN ${montoPorMetodoSql("efectivo")} > 0 THEN 1 END) AS cantidad,
+                COALESCE(SUM(${montoPorMetodoSql("efectivo")}), 0) AS total
+         FROM ventas v INNER JOIN sedes s ON s.id = v.sede_id
          WHERE DATE(v.fecha) = ?
-         GROUP BY s.id, s.nombre, v.metodo_pago
-         ORDER BY s.nombre, v.metodo_pago`,
-        [parsedDate.data]
+         GROUP BY s.id, s.nombre
+         UNION ALL
+         SELECT s.nombre AS sede, 'tarjeta' AS metodo_pago,
+                COUNT(CASE WHEN ${montoPorMetodoSql("tarjeta")} > 0 THEN 1 END) AS cantidad,
+                COALESCE(SUM(${montoPorMetodoSql("tarjeta")}), 0) AS total
+         FROM ventas v INNER JOIN sedes s ON s.id = v.sede_id
+         WHERE DATE(v.fecha) = ?
+         GROUP BY s.id, s.nombre
+         UNION ALL
+         SELECT s.nombre AS sede, 'transferencia' AS metodo_pago,
+                COUNT(CASE WHEN ${montoPorMetodoSql("transferencia")} > 0 THEN 1 END) AS cantidad,
+                COALESCE(SUM(${montoPorMetodoSql("transferencia")}), 0) AS total
+         FROM ventas v INNER JOIN sedes s ON s.id = v.sede_id
+         WHERE DATE(v.fecha) = ?
+         GROUP BY s.id, s.nombre
+         ORDER BY sede, metodo_pago`,
+        [parsedDate.data, parsedDate.data, parsedDate.data]
       ),
       pool.query(
         `SELECT e.nombre AS empleado, COUNT(v.id) AS ventas, COALESCE(SUM(v.total), 0) AS total
@@ -864,10 +965,11 @@ export async function getAdminSalesDayDetails(fecha: string): Promise<AdminSales
         [parsedDate.data]
       ),
       pool.query(
-        `SELECT s.nombre AS sede, v.notas_transferencia, COUNT(*) AS cantidad, SUM(v.total) AS total
+        `SELECT s.nombre AS sede, v.notas_transferencia, COUNT(*) AS cantidad,
+                SUM(${montoPorMetodoSql("transferencia")}) AS total
          FROM ventas v
          INNER JOIN sedes s ON s.id = v.sede_id
-         WHERE DATE(v.fecha) = ? AND v.metodo_pago = 'transferencia'
+         WHERE DATE(v.fecha) = ? AND ${montoPorMetodoSql("transferencia")} > 0
          GROUP BY s.id, s.nombre, v.notas_transferencia
          ORDER BY s.nombre, v.notas_transferencia`,
         [parsedDate.data]
@@ -905,6 +1007,9 @@ export async function getAdminSalesDayDetails(fecha: string): Promise<AdminSales
     fecha: string;
     total: number;
     metodo_pago: MetodoPago;
+    pago_efectivo: number | null;
+    pago_tarjeta: number | null;
+    pago_transferencia: number | null;
     notas_transferencia: string | null;
     empleado: string;
     sede: string;
@@ -918,7 +1023,7 @@ export async function getAdminSalesDayDetails(fecha: string): Promise<AdminSales
     empleado: row.empleado,
     sede: row.sede,
     total: Number(row.total),
-    metodoPago: row.metodo_pago,
+    ...mapearPagosVenta(row),
     totalCodigo: Number(row.total_codigo),
     totalNeta: Number(row.total_neta),
     notasTransferencia: row.notas_transferencia,
@@ -1050,11 +1155,18 @@ export async function getDashboardResumen(sedeId: number | null = null): Promise
   const detalleHoy = (detalleRows as { total_codigos: number; total_netas: number }[])[0];
 
   const [metodoRows] = await pool.query(
-    `SELECT metodo_pago, COALESCE(SUM(total), 0) AS total
-     FROM ventas
-     WHERE DATE(fecha) = CURDATE() AND (? IS NULL OR sede_id = ?)
-     GROUP BY metodo_pago`,
-    [sedeId, sedeId]
+    `SELECT 'efectivo' AS metodo_pago, COALESCE(SUM(${montoPorMetodoSql("efectivo")}), 0) AS total
+       FROM ventas v
+       WHERE DATE(v.fecha) = CURDATE() AND (? IS NULL OR v.sede_id = ?)
+     UNION ALL
+     SELECT 'tarjeta' AS metodo_pago, COALESCE(SUM(${montoPorMetodoSql("tarjeta")}), 0) AS total
+       FROM ventas v
+       WHERE DATE(v.fecha) = CURDATE() AND (? IS NULL OR v.sede_id = ?)
+     UNION ALL
+     SELECT 'transferencia' AS metodo_pago, COALESCE(SUM(${montoPorMetodoSql("transferencia")}), 0) AS total
+       FROM ventas v
+       WHERE DATE(v.fecha) = CURDATE() AND (? IS NULL OR v.sede_id = ?)`,
+    [sedeId, sedeId, sedeId, sedeId, sedeId, sedeId]
   );
   const metodosRegistrados = new Map(
     (metodoRows as { metodo_pago: MetodoPago; total: number }[]).map((row) => [

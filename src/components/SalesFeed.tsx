@@ -176,7 +176,7 @@ export function SalesFeed({ refreshSignal, sedes }: SalesFeedProps) {
                     <TableRow
                       key={venta.id}
                       className={
-                        resaltarNoEfectivo && venta.metodoPago !== "efectivo"
+                        resaltarNoEfectivo && venta.pagosPorMetodo.some((pago) => pago.metodoPago !== "efectivo")
                           ? "bg-emerald-100/75 hover:bg-emerald-100"
                           : ""
                       }
@@ -189,10 +189,16 @@ export function SalesFeed({ refreshSignal, sedes }: SalesFeedProps) {
                       </TableCell>
                       <TableCell
                         className={`capitalize ${
-                          venta.metodoPago !== "efectivo" ? "font-semibold text-emerald-700" : ""
+                          venta.pagosPorMetodo.some((pago) => pago.metodoPago !== "efectivo")
+                            ? "font-semibold text-emerald-700"
+                            : ""
                         }`}
                       >
-                        {venta.metodoPago}
+                        {venta.pagosPorMetodo.length > 1
+                          ? venta.pagosPorMetodo
+                              .map(({ metodoPago, total }) => `${metodoPago} ${formatCOP(total)}`)
+                              .join(" · ")
+                          : venta.pagosPorMetodo[0]?.metodoPago ?? venta.metodoPago}
                       </TableCell>
                       <TableCell
                         className="max-w-48 truncate"

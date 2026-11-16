@@ -85,7 +85,11 @@ export function SaleDetailDialog({ ventaId, onOpenChange }: SaleDetailDialogProp
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Metodo de pago</span>
-                <span className="capitalize">{detalle.metodoPago}</span>
+                <span className="text-right capitalize">
+                  {detalle.pagosPorMetodo
+                    .map(({ metodoPago, total }) => `${metodoPago}: ${formatCOP(total)}`)
+                    .join(" · ")}
+                </span>
               </div>
               {detalle.notasTransferencia && (
                 <div className="flex justify-between gap-4">
