@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ListOrdered, Eye, Trash2, Loader2, Check, X, Radio } from "lucide-react";
+import { ListOrdered, Eye, Trash2, Loader2, Check, X, Radio, Tag } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,7 @@ export function SalesFeed({ refreshSignal, sedes }: SalesFeedProps) {
   const [sedeId, setSedeId] = useState<number | null>(null);
   const [detalleId, setDetalleId] = useState<number | null>(null);
   const [resaltarNoEfectivo, setResaltarNoEfectivo] = useState(false);
+  const [resaltarArticulosSocio, setResaltarArticulosSocio] = useState(false);
   const [confirmarId, setConfirmarId] = useState<number | null>(null);
   const [eliminandoId, setEliminandoId] = useState<number | null>(null);
   const [errorEliminar, setErrorEliminar] = useState<string | null>(null);
@@ -121,6 +122,18 @@ export function SalesFeed({ refreshSignal, sedes }: SalesFeedProps) {
             >
               Transferencias
             </Button>
+            <Button
+              type="button"
+              size="default"
+              variant={resaltarArticulosSocio ? "default" : "outline"}
+              aria-pressed={resaltarArticulosSocio}
+              aria-label="Resaltar gorras, pavas y guantes del socio"
+              onClick={() => setResaltarArticulosSocio((current) => !current)}
+              className={resaltarArticulosSocio ? "bg-sky-600 text-white hover:bg-sky-700" : ""}
+            >
+              <Tag className="mr-1.5 size-4" />
+              Gorras
+            </Button>
             <label htmlFor="filtro-sede-ventas-vendedor" className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Radio className="size-4" />
               Sede
@@ -176,9 +189,12 @@ export function SalesFeed({ refreshSignal, sedes }: SalesFeedProps) {
                     <TableRow
                       key={venta.id}
                       className={
-                        resaltarNoEfectivo && venta.pagosPorMetodo.some((pago) => pago.metodoPago !== "efectivo")
-                          ? "bg-emerald-100/75 hover:bg-emerald-100"
-                          : ""
+                        resaltarArticulosSocio && venta.incluyeArticuloSocio
+                          ? "bg-sky-100/80 hover:bg-sky-100"
+                          : resaltarNoEfectivo &&
+                              venta.pagosPorMetodo.some((pago) => pago.metodoPago !== "efectivo")
+                            ? "bg-emerald-100/75 hover:bg-emerald-100"
+                            : ""
                       }
                     >
                       <TableCell className="whitespace-nowrap">{formatHora(venta.fecha)}</TableCell>

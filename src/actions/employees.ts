@@ -10,10 +10,11 @@ import type { Empleado } from "@/lib/types";
 export async function listActiveEmployees(): Promise<Empleado[]> {
   const pool = getPool();
   const [rows] = await pool.query(
-    `SELECT id, nombre, sede_id, activo
-     FROM empleados
-     WHERE activo = TRUE
-     ORDER BY nombre ASC`
+    `SELECT e.id, e.nombre, e.sede_id, e.activo, s.nombre AS sede_nombre
+     FROM empleados e
+     INNER JOIN sedes s ON s.id = e.sede_id
+     WHERE e.activo = TRUE
+     ORDER BY e.nombre ASC`
   );
   return rows as Empleado[];
 }

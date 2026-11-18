@@ -11,6 +11,7 @@ import {
   Loader2,
   Package,
   ReceiptText,
+  Tag,
   UsersRound,
   Wallet,
 } from "lucide-react";
@@ -66,6 +67,8 @@ export function SalesDayDetailDialog({ fecha, onOpenChange }: SalesDayDetailDial
   const [error, setError] = useState<string | null>(null);
   const [sedeSeleccionada, setSedeSeleccionada] = useState("todas");
   const [metodoSeleccionado, setMetodoSeleccionado] = useState("todos");
+  const [resaltarNoEfectivo, setResaltarNoEfectivo] = useState(false);
+  const [resaltarArticulosSocio, setResaltarArticulosSocio] = useState(false);
 
   useEffect(() => {
     if (!fecha) return;
@@ -75,6 +78,8 @@ export function SalesDayDetailDialog({ fecha, onOpenChange }: SalesDayDetailDial
       setError(null);
       setSedeSeleccionada("todas");
       setMetodoSeleccionado("todos");
+      setResaltarNoEfectivo(false);
+      setResaltarArticulosSocio(false);
 
       getAdminSalesDayDetails(fecha)
         .then((data) => {
@@ -221,6 +226,28 @@ export function SalesDayDetailDialog({ fecha, onOpenChange }: SalesDayDetailDial
                           <option key={method} value={method}>{details.label}</option>
                         ))}
                       </select>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={resaltarNoEfectivo ? "default" : "outline"}
+                        aria-pressed={resaltarNoEfectivo}
+                        onClick={() => setResaltarNoEfectivo((current) => !current)}
+                        className={resaltarNoEfectivo ? "bg-emerald-700 text-white hover:bg-emerald-800" : ""}
+                      >
+                        Transferencias
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={resaltarArticulosSocio ? "default" : "outline"}
+                        aria-pressed={resaltarArticulosSocio}
+                        aria-label="Resaltar gorras, pavas y guantes del socio"
+                        onClick={() => setResaltarArticulosSocio((current) => !current)}
+                        className={resaltarArticulosSocio ? "bg-sky-600 text-white hover:bg-sky-700" : ""}
+                      >
+                        <Tag className="mr-1.5 size-4" />
+                        Gorras
+                      </Button>
                     </div>
                   </div>
                   <div className="overflow-x-auto rounded-xl border border-slate-100">
@@ -244,7 +271,17 @@ export function SalesDayDetailDialog({ fecha, onOpenChange }: SalesDayDetailDial
                             </TableCell>
                           </TableRow>
                         ) : filteredSales.map((sale) => (
-                          <TableRow key={sale.id}>
+                          <TableRow
+                            key={sale.id}
+                            className={
+                              resaltarArticulosSocio && sale.incluyeArticuloSocio
+                                ? "bg-sky-100/80 hover:bg-sky-100"
+                                : resaltarNoEfectivo &&
+                                    sale.pagosPorMetodo.some((pago) => pago.metodoPago !== "efectivo")
+                                  ? "bg-emerald-100/75 hover:bg-emerald-100"
+                                  : ""
+                            }
+                          >
                             <TableCell className="whitespace-nowrap">{sale.hora}</TableCell>
                             <TableCell className="font-medium">{sale.empleado}</TableCell>
                             <TableCell>{sale.sede}</TableCell>

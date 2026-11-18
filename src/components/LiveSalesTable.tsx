@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Radio } from "lucide-react";
+import { Radio, Tag } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,7 @@ function getSedeLabel(nombre: string) {
 export function LiveSalesTable({ sedeId, sedes, onSedeChange }: LiveSalesTableProps) {
   const [ventas, setVentas] = useState<VentaFeedItem[]>([]);
   const [resaltarNoEfectivo, setResaltarNoEfectivo] = useState(false);
+  const [resaltarArticulosSocio, setResaltarArticulosSocio] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -81,6 +82,18 @@ export function LiveSalesTable({ sedeId, sedes, onSedeChange }: LiveSalesTablePr
               className={resaltarNoEfectivo ? "bg-emerald-700 text-white hover:bg-emerald-800" : ""}
             >
               Transferencias
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={resaltarArticulosSocio ? "default" : "outline"}
+              aria-pressed={resaltarArticulosSocio}
+              aria-label="Resaltar gorras, pavas y guantes del socio"
+              onClick={() => setResaltarArticulosSocio((current) => !current)}
+              className={resaltarArticulosSocio ? "bg-sky-600 text-white hover:bg-sky-700" : ""}
+            >
+              <Tag className="mr-1.5 size-4" />
+              Gorras
             </Button>
             <select
               aria-label="Filtrar ventas en vivo por sede"
@@ -123,9 +136,12 @@ export function LiveSalesTable({ sedeId, sedes, onSedeChange }: LiveSalesTablePr
                   <TableRow
                     key={venta.id}
                     className={
-                      resaltarNoEfectivo && venta.pagosPorMetodo.some((pago) => pago.metodoPago !== "efectivo")
-                        ? "bg-emerald-100/75 hover:bg-emerald-100"
-                        : ""
+                      resaltarArticulosSocio && venta.incluyeArticuloSocio
+                        ? "bg-sky-100/80 hover:bg-sky-100"
+                        : resaltarNoEfectivo &&
+                            venta.pagosPorMetodo.some((pago) => pago.metodoPago !== "efectivo")
+                          ? "bg-emerald-100/75 hover:bg-emerald-100"
+                          : ""
                     }
                   >
                     <TableCell>{formatFechaHora(venta.fecha)}</TableCell>

@@ -23,6 +23,21 @@ const itemVentaSchema = z.object({
 );
 
 const METODOS_PAGO = ["efectivo", "tarjeta", "transferencia"] as const;
+const NOMBRE_PRODUCTO_SQL = "LOWER(COALESCE(dv.nombre_producto, p.nombre, ''))";
+const PRODUCTO_SOCIO_SQL = `(
+  (${NOMBRE_PRODUCTO_SQL} LIKE '%gorra%'
+    OR ${NOMBRE_PRODUCTO_SQL} LIKE '%sombrero%'
+    OR ${NOMBRE_PRODUCTO_SQL} LIKE '%pava%'
+    OR ${NOMBRE_PRODUCTO_SQL} LIKE '%guante%')
+  AND ${NOMBRE_PRODUCTO_SQL} NOT LIKE '%guante cocina%'
+  AND ${NOMBRE_PRODUCTO_SQL} NOT LIKE '%guante de cocina%'
+  AND ${NOMBRE_PRODUCTO_SQL} NOT LIKE '%guantes cocina%'
+  AND ${NOMBRE_PRODUCTO_SQL} NOT LIKE '%guantes de cocina%'
+  AND ${NOMBRE_PRODUCTO_SQL} NOT LIKE '%gorra cocina%'
+  AND ${NOMBRE_PRODUCTO_SQL} NOT LIKE '%gorra de cocina%'
+  AND ${NOMBRE_PRODUCTO_SQL} NOT LIKE '%gorras cocina%'
+  AND ${NOMBRE_PRODUCTO_SQL} NOT LIKE '%gorras de cocina%'
+)`;
 
 const pagoVentaSchema = z.object({
   metodoPago: z.enum(METODOS_PAGO),
@@ -179,6 +194,7 @@ export interface VentaFeedItem {
   totalNeta: number;
   notasTransferencia: string | null;
   articulos: string;
+  incluyeArticuloSocio: boolean;
 }
 
 type VentaConPagos = {
@@ -220,6 +236,7 @@ async function loadTodaySalesList(
             v.pago_transferencia, v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
             COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_codigo,
             COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_neta,
+            MAX(CASE WHEN ${PRODUCTO_SOCIO_SQL} THEN 1 ELSE 0 END) AS incluye_producto_socio,
             GROUP_CONCAT(
               CONCAT(COALESCE(dv.nombre_producto, p.nombre),
                      IF(dv.cantidad > 1, CONCAT(' x', dv.cantidad), ''))
@@ -253,6 +270,7 @@ async function loadTodaySalesList(
       total_codigo: number;
       total_neta: number;
       articulos: string | null;
+      incluye_producto_socio: number | boolean;
     }[]
   ).map((row) => ({
     id: row.id,
@@ -265,6 +283,7 @@ async function loadTodaySalesList(
     totalNeta: Number(row.total_neta),
     notasTransferencia: row.notas_transferencia,
     articulos: row.articulos ?? "-",
+    incluyeArticuloSocio: Boolean(row.incluye_producto_socio),
   }));
 }
 
@@ -350,6 +369,7 @@ export async function getTodaySalesPage(input: {
             e.nombre AS empleado, s.nombre AS sede,
             COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_codigo,
             COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_neta,
+            MAX(CASE WHEN ${PRODUCTO_SOCIO_SQL} THEN 1 ELSE 0 END) AS incluye_producto_socio,
             GROUP_CONCAT(
               CONCAT(COALESCE(dv.nombre_producto, p.nombre),
                      IF(dv.cantidad > 1, CONCAT(' x', dv.cantidad), ''))
@@ -381,6 +401,7 @@ export async function getTodaySalesPage(input: {
     total_codigo: number;
     total_neta: number;
     articulos: string | null;
+    incluye_producto_socio: number | boolean;
   }[]).map((row) => ({
     id: row.id,
     fecha: row.fecha,
@@ -392,6 +413,7 @@ export async function getTodaySalesPage(input: {
     totalNeta: Number(row.total_neta),
     notasTransferencia: row.notas_transferencia,
     articulos: row.articulos ?? "-",
+    incluyeArticuloSocio: Boolean(row.incluye_producto_socio),
   }));
 
   return {
@@ -598,6 +620,7 @@ export async function listAllSales(filtros: FiltrosVentas = {}): Promise<ListaVe
             v.pago_transferencia, v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
             COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_codigo,
             COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_neta,
+            MAX(CASE WHEN ${PRODUCTO_SOCIO_SQL} THEN 1 ELSE 0 END) AS incluye_producto_socio,
             GROUP_CONCAT(
               CONCAT(COALESCE(dv.nombre_producto, p.nombre),
                      IF(dv.cantidad > 1, CONCAT(' x', dv.cantidad), ''))
@@ -648,6 +671,7 @@ export async function listAllSales(filtros: FiltrosVentas = {}): Promise<ListaVe
       total_codigo: number;
       total_neta: number;
       articulos: string | null;
+      incluye_producto_socio: number | boolean;
     }[]
   ).map((row) => ({
     id: row.id,
@@ -660,6 +684,7 @@ export async function listAllSales(filtros: FiltrosVentas = {}): Promise<ListaVe
     totalNeta: Number(row.total_neta),
     notasTransferencia: row.notas_transferencia,
     articulos: row.articulos ?? "-",
+    incluyeArticuloSocio: Boolean(row.incluye_producto_socio),
   }));
 
   return { ventas, totalesPorMetodo };
@@ -853,6 +878,7 @@ export async function getAdminSalesDayDetails(fecha: string): Promise<AdminSales
                 v.notas_transferencia, e.nombre AS empleado, s.nombre AS sede,
                 COALESCE(SUM(CASE WHEN dv.es_venta_neta = FALSE THEN dv.valor_codigo * dv.cantidad ELSE 0 END), 0) AS total_codigo,
                 COALESCE(SUM(CASE WHEN dv.es_venta_neta = TRUE THEN dv.precio_unitario * dv.cantidad ELSE 0 END), 0) AS total_neta,
+                MAX(CASE WHEN ${PRODUCTO_SOCIO_SQL} THEN 1 ELSE 0 END) AS incluye_producto_socio,
                 GROUP_CONCAT(
                   CONCAT(COALESCE(dv.nombre_producto, p.nombre),
                          IF(dv.cantidad > 1, CONCAT(' x', dv.cantidad), ''))
@@ -1016,6 +1042,7 @@ export async function getAdminSalesDayDetails(fecha: string): Promise<AdminSales
     total_codigo: number;
     total_neta: number;
     articulos: string | null;
+    incluye_producto_socio: number | boolean;
   }[]).map((row) => ({
     id: row.id,
     fecha: row.fecha,
@@ -1028,6 +1055,7 @@ export async function getAdminSalesDayDetails(fecha: string): Promise<AdminSales
     totalNeta: Number(row.total_neta),
     notasTransferencia: row.notas_transferencia,
     articulos: row.articulos ?? "-",
+    incluyeArticuloSocio: Boolean(row.incluye_producto_socio),
   }));
   const methodsBySite = methodRows[0] as {
     sede: string;

@@ -870,6 +870,9 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                     ) : (
                       empleados.map((empleado) => {
                         const seleccionado = String(empleado.id) === empleadoId;
+                        const esPuntoIntimo = empleado.sede_nombre
+                          ?.toLocaleLowerCase("es-CO")
+                          .includes("punto intimo") ?? false;
                         return (
                           <Button
                             key={empleado.id}
@@ -886,7 +889,19 @@ export function SalesTerminal({ empleados, onSaleRegistered }: SalesTerminalProp
                                 : "bg-white"
                             }`}
                           >
-                            <span className="truncate pr-3 text-sm font-medium">{empleado.nombre}</span>
+                            <span className="flex min-w-0 items-center gap-2 pr-3">
+                              <span className="truncate text-sm font-medium">{empleado.nombre}</span>
+                              {esPuntoIntimo && (
+                                <span
+                                  aria-label="Vendedor de Punto Íntimo"
+                                  title="Punto Íntimo"
+                                  className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full border border-pink-200 bg-pink-50 px-2 text-xs font-bold text-pink-600"
+                                >
+                                  <span className="size-1.5 rounded-full bg-pink-500" />
+                                  I
+                                </span>
+                              )}
+                            </span>
                             {seleccionado && <Check className="size-4 shrink-0 text-emerald-700" />}
                           </Button>
                         );

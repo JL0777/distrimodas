@@ -9,6 +9,7 @@ export interface Empleado {
   id: number;
   nombre: string;
   sede_id: number;
+  sede_nombre?: string;
   activo: boolean;
 }
 
